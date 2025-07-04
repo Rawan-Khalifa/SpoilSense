@@ -1,34 +1,38 @@
-import os, functools
+import os
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from firebase_admin import auth as admin_auth
 from models import upsert_user
+from dotenv import load_dotenv
+
+load_dotenv()  # picks up .env in server/
 
 app = Flask(__name__)
+# allow your React app to call this API
+CORS(app, origins=["http://localhost:3000"])
 
-def login_required(f):
-    @functools.wraps(f)
-    def wrapper(*args, **kwargs):
-        header = request.headers.get("Authorization", "")
-        token = header.split(" ").pop() if header else None
-        if not token:
-            return jsonify({"error":"missing token"}), 401
-        try:
-            decoded = admin_auth.verify_id_token(token)
-        except Exception as e:
-            return jsonify({"error":"invalid token"}), 401
-        # make uid/email available
-        request.uid   = decoded["uid"]
-        request.email = decoded.get("email")
-        request.name  = decoded.get("name", "")
-        return f(*args, **kwargs)
-    return wrapper
-
-@app.route("/auth/login", methods=["POST"])
-@login_required
-def auth_login():
-    # Create/update the user doc
-    upsert_user(request.uid, request.email, request.name)
+@app.route("/", methods=["GET"])
+def health_check():
     return jsonify({"status":"ok"}), 200
 
+@app.route("/auth/login", methods=["POST"])
+def auth_login():
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.split(" ").pop() if auth_header else None
+    if not token:
+        return jsonify({"error": "Missing ID token"}), 401
+
+    try:
+        decoded = admin_auth.verify_id_token(token)
+    except Exception:
+        return jsonify({"error": "Invalid ID token"}), 401
+
+    uid   = decoded["uid"]
+    email = decoded.get("email", "")
+    name  = decoded.get("name", "")
+    upsert_user(uid, email, name)
+
+    return jsonify({"status": "ok"}), 200
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
