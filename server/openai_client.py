@@ -1,6 +1,7 @@
 # server/openai_client.py
 
 import os
+import re
 import requests
 import openai
 
@@ -61,15 +62,12 @@ def estimate_spoilage(image_url: str, latitude: float, longitude: float) -> int:
         }]
     )
 
-    # d) parse & return an integer
+    # d) parse & return the first integer found in the response
     text = resp.output_text.strip()
-    try:
-        # In case GPT returns e.g. "5 days" or "5"
-        days = int(text.split()[0])
-    except Exception:
-        raise ValueError(f"Unexpected spoilage response: {text}")
-
-    return days
+    match = re.search(r"\b(\d+)\b", text)
+    if not match:
+        raise ValueError(f"Could not extract an integer from GPT response: {text!r}")
+    return int(match.group(1))
 
 
 # ─── 3) quick CLI test ──────────────────────────────────────────────
