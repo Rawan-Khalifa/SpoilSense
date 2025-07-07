@@ -143,6 +143,46 @@ def upload_inventory():
             "error":   "Internal server error",
             "details": str(e)
         }), 500
+    
+# ─── Fetch inventory for current user ───────────────────────────────────────────
+@app.route("/inventory", methods=["GET"])
+@login_required
+def list_inventory():
+    uid = request.uid
+
+    coll = db.collection("users").document(uid).collection("inventory")
+    docs = coll.stream()
+
+    items = []
+    for d in docs:
+        data = d.to_dict()
+        # Firestore timestamps come back as Python datetime—convert to ISO
+        scan_time = data.get("scanTime")
+        if hasattr(scan_time, "isoformat"):
+            data["scanTime"] = scan_time.isoformat()
+        # you wrote registeredAt as SERVER_TIMESTAMP, but we don't need it client-side
+        # pull only the fields your UI expects
+        item = {
+            "id":           d.id,
+            "productName":  data.get("productName", ""),      # or derive from image_url if needed
+            "image":        data["imageUrl"],
+            "scanDate":     data["scanTime"],
+            "expiryDate":   data.get("predictedDate", ""),    # if you computed it
+            "daysLeft":     data["spoilageDays"],
+            "temperature":  data.get("temperature", data.get("weatherTemp")),
+            "humidity":     data.get("humidity"),
+            "storageType":  data["storageType"],
+            "confidence":   data.get("confidence", 0),        # if you ever record it
+            # derive status
+            "status": (
+                "expired"   if data["spoilageDays"] < 0 else
+                "expiring"  if data["spoilageDays"] < 2 else
+                "fresh"
+            )
+        }
+        items.append(item)
+
+    return jsonify(items), 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
