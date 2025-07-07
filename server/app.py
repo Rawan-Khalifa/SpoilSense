@@ -1,9 +1,8 @@
 # server/app.py
 
 import os
-import json
 from uuid import uuid4
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from firebase_admin import auth as admin_auth, credentials, initialize_app, firestore
 from werkzeug.utils import secure_filename
@@ -20,11 +19,10 @@ BASE_DIR   = os.path.dirname(__file__)
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# When you do `GET /uploads/<path:filename>`, Flask will serve from UPLOAD_DIR
 app = Flask(
     __name__,
-    static_url_path="/uploads",  # URL prefix for serving
-    static_folder=UPLOAD_DIR     # directory to serve
+    static_url_path="/uploads",
+    static_folder=UPLOAD_DIR
 )
 
 # ─── Enable CORS for your React app ────────────────────────────────────────────
@@ -38,10 +36,9 @@ db = firestore.client()
 # ─── Auth decorator ────────────────────────────────────────────────────────────
 def login_required(f):
     from functools import wraps
-
     @wraps(f)
     def wrapper(*args, **kwargs):
-        token = request.headers.get("Authorization", "").split(" ").pop()
+        token = request.headers.get("Authorization", "").split().pop()
         if not token:
             return jsonify({"error": "Missing ID token"}), 401
         try:
@@ -65,8 +62,8 @@ def auth_login():
     decoded = admin_auth.verify_id_token(request.headers["Authorization"].split().pop())
     doc = db.collection("users").document(uid)
     doc.set({
-        "email":    decoded.get("email", ""),
-        "name":     decoded.get("name", ""),
+        "email":     decoded.get("email", ""),
+        "name":      decoded.get("name", ""),
         "updatedAt": firestore.SERVER_TIMESTAMP
     }, merge=True)
     return jsonify({"status": "ok"}), 200
@@ -83,14 +80,13 @@ def upload_inventory():
         lon = request.form.get("longitude", type=float)
         img = request.files.get("image")
         if img is None or lat is None or lon is None:
-            return jsonify({"error":"Missing image or coordinates"}), 400
+            return jsonify({"error": "Missing image or coordinates"}), 400
 
         # 2) Optional metadata
-        storage_type     = request.form.get("storageType", "room")
-        temp_override    = request.form.get("temperature", type=float)
-        humidity_override= request.form.get("humidity",    type=float)
-        scan_time_str    = request.form.get("scanTime")
-        # leave scan_time_str as ISO‐string; client can parse it
+        storage_type      = request.form.get("storageType", "room")
+        temp_override     = request.form.get("temperature", type=float)
+        humidity_override = request.form.get("humidity", type=float)
+        scan_time_str     = request.form.get("scanTime")
 
         # 3) Save file locally under uploads/{uid}/…
         user_dir = os.path.join(UPLOAD_DIR, uid)
@@ -104,13 +100,12 @@ def upload_inventory():
         host      = UPLOAD_BASE or request.host_url.rstrip("/")
         image_url = f"{host}/uploads/{uid}/{unique}"
 
-
         # 5) Call your spoilage estimator
         from openai_client import estimate_spoilage
         spoilage_days = estimate_spoilage(image_url, lat, lon)
 
-        # 6) Assemble Firestore data
-        doc_data = {
+        # 6) Assemble Firestore data for writing
+        write_data = {
             "imageUrl":     image_url,
             "latitude":     lat,
             "longitude":    lon,
@@ -119,25 +114,33 @@ def upload_inventory():
             "registeredAt": firestore.SERVER_TIMESTAMP,
             "spoilageDays": spoilage_days
         }
-        # only include fridge overrides if provided
         if storage_type == "fridge":
-            doc_data["temperature"] = temp_override
-            doc_data["humidity"]    = humidity_override
+            write_data["temperature"] = temp_override
+            write_data["humidity"]    = humidity_override
 
         # 7) Write to Firestore
         coll = db.collection("users").document(uid).collection("inventory")
         doc  = coll.document()
-        doc.set(doc_data)
+        doc.set(write_data)
 
-        # 8) Return full object (including doc ID)
-        resp = { **doc_data, "id": doc.id }
-        return jsonify(resp), 200
+        # 8) Build a pure-Python response (no Firestore sentinels)
+        resp_data = {
+            "id":           doc.id,
+            "imageUrl":     image_url,
+            "spoilageDays": spoilage_days,
+            "storageType":  storage_type,
+            "scanTime":     write_data["scanTime"]
+        }
+        if storage_type == "fridge":
+            resp_data["temperature"] = temp_override
+            resp_data["humidity"]    = humidity_override
+
+        return jsonify(resp_data), 200
 
     except Exception as e:
-        # log full traceback to server console
         traceback.print_exc()
         return jsonify({
-            "error": "Internal server error",
+            "error":   "Internal server error",
             "details": str(e)
         }), 500
 
