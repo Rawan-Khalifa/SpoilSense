@@ -14,7 +14,13 @@ export default function LandingPage() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
-                <Camera className="w-5 h-5 text-white" />
+                <Image
+                  src="/SpoilSense_logo.png"
+                  alt="SpoilSense Logo"
+                  width={64}
+                  height={64}
+                  className="object-contain"
+                />
               </div>
               <span className="text-xl font-bold text-gray-900">SpoilSensei</span>
             </div>
@@ -56,7 +62,7 @@ export default function LandingPage() {
           </div>
           <div className="mt-12">
             <Image
-              src="/placeholder.svg?height=400&width=600"
+              src="/LandingPage_image.png"
               alt="SpoilSensei Dashboard"
               width={600}
               height={400}
@@ -70,7 +76,7 @@ export default function LandingPage() {
       <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">How SpoilSensei Works</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-4">How SpoilSense Works</h2>
             <p className="text-lg text-gray-600">Simple, fast, and accurate food spoilage prediction</p>
           </div>
           <div className="grid md:grid-cols-3 gap-8">
@@ -197,9 +203,15 @@ export default function LandingPage() {
             <div>
               <div className="flex items-center space-x-2 mb-4">
                 <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
-                  <Camera className="w-5 h-5 text-white" />
+                  <Image
+                  src="/SpoilSense_logo.png"
+                  alt="SpoilSense Logo"
+                  width={64}
+                  height={64}
+                  className="object-contain"
+                  />
                 </div>
-                <span className="text-xl font-bold">SpoilSensei</span>
+                <span className="text-xl font-bold">SpoilSense</span>
               </div>
               <p className="text-gray-400">Smart food spoilage prediction for a sustainable future.</p>
             </div>

@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Camera, Package, Scan, BarChart3, Clock, Leaf, LogOut } from "lucide-react"
+import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 
@@ -21,7 +22,13 @@ export default function DashboardPage() {
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-2">
               <div className="w-8 h-8 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
-                <Camera className="w-5 h-5 text-white" />
+                <Image
+                  src="/SpoilSense_logo.png"
+                  alt="SpoilSense Logo"
+                  width={64}
+                  height={64}
+                  className="object-contain"
+                />
               </div>
               <span className="text-xl font-bold text-gray-900">SpoilSensei</span>
             </div>
