@@ -5,3 +5,5 @@ client/.env.local
 server/.env
 
 server/__pycache__/
+
+server/uploads/
