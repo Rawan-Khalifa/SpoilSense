@@ -100,20 +100,28 @@ def upload_inventory():
         host      = UPLOAD_BASE or request.host_url.rstrip("/")
         image_url = f"{host}/uploads/{uid}/{unique}"
 
-        # 5) Call your spoilage estimator
+        # 5) Call your structured spoilage estimator
         from openai_client import estimate_spoilage
-        spoilage_days = estimate_spoilage(image_url, lat, lon)
+        result = estimate_spoilage(image_url, lat, lon)
+        product_name   = result["product_name"]
+        spoilage_days  = result["spoilage_days"]
+        predicted_date = result["predicted_date"]
+        confidence     = result["confidence"]
 
         # 6) Assemble Firestore data for writing
         write_data = {
-            "imageUrl":     image_url,
-            "latitude":     lat,
-            "longitude":    lon,
-            "storageType":  storage_type,
-            "scanTime":     scan_time_str or datetime.utcnow().isoformat(),
-            "registeredAt": firestore.SERVER_TIMESTAMP,
-            "spoilageDays": spoilage_days
+            "productName":   product_name,
+            "imageUrl":      image_url,
+            "latitude":      lat,
+            "longitude":     lon,
+            "storageType":   storage_type,
+            "scanTime":      scan_time_str or datetime.utcnow().isoformat(),
+            "registeredAt":  firestore.SERVER_TIMESTAMP,
+            "spoilageDays":  spoilage_days,
+            "predictedDate": predicted_date,
+            "confidence":    confidence
         }
+
         if storage_type == "fridge":
             write_data["temperature"] = temp_override
             write_data["humidity"]    = humidity_override
@@ -125,12 +133,16 @@ def upload_inventory():
 
         # 8) Build a pure-Python response (no Firestore sentinels)
         resp_data = {
-            "id":           doc.id,
-            "imageUrl":     image_url,
-            "spoilageDays": spoilage_days,
-            "storageType":  storage_type,
-            "scanTime":     write_data["scanTime"]
+            "id":            doc.id,
+            "productName":   product_name,
+            "imageUrl":      image_url,
+            "spoilageDays":  spoilage_days,
+            "predictedDate": predicted_date,
+            "confidence":    confidence,
+            "storageType":   storage_type,
+            "scanTime":      write_data["scanTime"]
         }
+        
         if storage_type == "fridge":
             resp_data["temperature"] = temp_override
             resp_data["humidity"]    = humidity_override
