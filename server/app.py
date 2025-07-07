@@ -7,7 +7,7 @@ from flask_cors import CORS
 from firebase_admin import auth as admin_auth, credentials, initialize_app, firestore
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 import traceback
 
 # ─── Load environment ──────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ def upload_inventory():
 @app.route("/inventory", methods=["GET"])
 @login_required
 def list_inventory():
-    uid = request.uid
+    uid  = request.uid
     coll = db.collection("users").document(uid).collection("inventory")
     docs = coll.stream()
 
@@ -168,13 +168,31 @@ def list_inventory():
     for d in docs:
         data = d.to_dict()
 
-        # Convert Firestore timestamps if you stored scanTime as string you can skip
-        scan_time = data.get("scanTime")
+        # 1) Scan time (string)
+        scan_time = data.get("scanTime", "")
+        # If stored as Firestore Timestamp, convert to ISO first:
         if hasattr(scan_time, "isoformat"):
-            data["scanTime"] = scan_time.isoformat()
+            scan_time = scan_time.isoformat()
 
-        # Compute status from spoilageDays
+        # 2) Spoilage days
         days = data.get("spoilageDays", 0)
+
+        # 3) Predicted date: either stored, or derived
+        pred_date = data.get("predictedDate")
+        if not pred_date:
+            try:
+                base = datetime.fromisoformat(scan_time)
+                pred_date = (base + timedelta(days=days)).date().isoformat()
+            except Exception:
+                pred_date = ""
+
+        # 4) Confidence
+        confidence = data.get("confidence", 0)
+
+        # 5) Product name
+        product_name = data.get("productName", "Unknown")
+
+        # 6) Compute status
         status = "fresh"
         if days < 0:
             status = "expired"
@@ -183,13 +201,13 @@ def list_inventory():
 
         items.append({
             "id":            d.id,
-            "productName":   data.get("productName","Unknown"),
-            "imageUrl":      data["imageUrl"],
-            "scanTime":      data["scanTime"],
-            "predictedDate": data["predictedDate"],
+            "productName":   product_name,
+            "imageUrl":      data.get("imageUrl", ""),
+            "scanTime":      scan_time,
+            "predictedDate": pred_date,
             "spoilageDays":  days,
-            "confidence":    data.get("confidence",0),
-            "storageType":   data.get("storageType","room"),
+            "confidence":    confidence,
+            "storageType":   data.get("storageType", "room"),
             "temperature":   data.get("temperature"),
             "humidity":      data.get("humidity"),
             "status":        status
