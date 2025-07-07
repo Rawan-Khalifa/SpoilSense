@@ -142,7 +142,7 @@ def upload_inventory():
             "storageType":   storage_type,
             "scanTime":      write_data["scanTime"]
         }
-        
+
         if storage_type == "fridge":
             resp_data["temperature"] = temp_override
             resp_data["humidity"]    = humidity_override
@@ -161,40 +161,42 @@ def upload_inventory():
 @login_required
 def list_inventory():
     uid = request.uid
-
     coll = db.collection("users").document(uid).collection("inventory")
     docs = coll.stream()
 
     items = []
     for d in docs:
         data = d.to_dict()
-        # Firestore timestamps come back as Python datetime—convert to ISO
+
+        # Convert Firestore timestamps if you stored scanTime as string you can skip
         scan_time = data.get("scanTime")
         if hasattr(scan_time, "isoformat"):
             data["scanTime"] = scan_time.isoformat()
-        # you wrote registeredAt as SERVER_TIMESTAMP, but we don't need it client-side
-        # pull only the fields your UI expects
-        item = {
-            "id":           d.id,
-            "productName":  data.get("productName", ""),      # or derive from image_url if needed
-            "image":        data["imageUrl"],
-            "scanDate":     data["scanTime"],
-            "expiryDate":   data.get("predictedDate", ""),    # if you computed it
-            "daysLeft":     data["spoilageDays"],
-            "temperature":  data.get("temperature", data.get("weatherTemp")),
-            "humidity":     data.get("humidity"),
-            "storageType":  data["storageType"],
-            "confidence":   data.get("confidence", 0),        # if you ever record it
-            # derive status
-            "status": (
-                "expired"   if data["spoilageDays"] < 0 else
-                "expiring"  if data["spoilageDays"] < 2 else
-                "fresh"
-            )
-        }
-        items.append(item)
+
+        # Compute status from spoilageDays
+        days = data.get("spoilageDays", 0)
+        status = "fresh"
+        if days < 0:
+            status = "expired"
+        elif days <= 1:
+            status = "expiring"
+
+        items.append({
+            "id":            d.id,
+            "productName":   data.get("productName","Unknown"),
+            "imageUrl":      data["imageUrl"],
+            "scanTime":      data["scanTime"],
+            "predictedDate": data["predictedDate"],
+            "spoilageDays":  days,
+            "confidence":    data.get("confidence",0),
+            "storageType":   data.get("storageType","room"),
+            "temperature":   data.get("temperature"),
+            "humidity":      data.get("humidity"),
+            "status":        status
+        })
 
     return jsonify(items), 200
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
