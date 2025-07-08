@@ -7,7 +7,7 @@ from flask_cors import CORS
 from firebase_admin import auth as admin_auth, credentials, initialize_app, firestore
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
 import traceback
 
 # ─── Load environment ──────────────────────────────────────────────────────────
@@ -100,20 +100,28 @@ def upload_inventory():
         host      = UPLOAD_BASE or request.host_url.rstrip("/")
         image_url = f"{host}/uploads/{uid}/{unique}"
 
-        # 5) Call your spoilage estimator
+        # 5) Call your structured spoilage estimator
         from openai_client import estimate_spoilage
-        spoilage_days = estimate_spoilage(image_url, lat, lon)
+        result = estimate_spoilage(image_url, lat, lon)
+        product_name   = result["product_name"]
+        spoilage_days  = result["spoilage_days"]
+        predicted_date = result["predicted_date"]
+        confidence     = result["confidence"]
 
         # 6) Assemble Firestore data for writing
         write_data = {
-            "imageUrl":     image_url,
-            "latitude":     lat,
-            "longitude":    lon,
-            "storageType":  storage_type,
-            "scanTime":     scan_time_str or datetime.utcnow().isoformat(),
-            "registeredAt": firestore.SERVER_TIMESTAMP,
-            "spoilageDays": spoilage_days
+            "productName":   product_name,
+            "imageUrl":      image_url,
+            "latitude":      lat,
+            "longitude":     lon,
+            "storageType":   storage_type,
+            "scanTime":      scan_time_str or datetime.utcnow().isoformat(),
+            "registeredAt":  firestore.SERVER_TIMESTAMP,
+            "spoilageDays":  spoilage_days,
+            "predictedDate": predicted_date,
+            "confidence":    confidence
         }
+
         if storage_type == "fridge":
             write_data["temperature"] = temp_override
             write_data["humidity"]    = humidity_override
@@ -125,12 +133,16 @@ def upload_inventory():
 
         # 8) Build a pure-Python response (no Firestore sentinels)
         resp_data = {
-            "id":           doc.id,
-            "imageUrl":     image_url,
-            "spoilageDays": spoilage_days,
-            "storageType":  storage_type,
-            "scanTime":     write_data["scanTime"]
+            "id":            doc.id,
+            "productName":   product_name,
+            "imageUrl":      image_url,
+            "spoilageDays":  spoilage_days,
+            "predictedDate": predicted_date,
+            "confidence":    confidence,
+            "storageType":   storage_type,
+            "scanTime":      write_data["scanTime"]
         }
+
         if storage_type == "fridge":
             resp_data["temperature"] = temp_override
             resp_data["humidity"]    = humidity_override
@@ -143,6 +155,66 @@ def upload_inventory():
             "error":   "Internal server error",
             "details": str(e)
         }), 500
+    
+# ─── Fetch inventory for current user ───────────────────────────────────────────
+@app.route("/inventory", methods=["GET"])
+@login_required
+def list_inventory():
+    uid  = request.uid
+    coll = db.collection("users").document(uid).collection("inventory")
+    docs = coll.stream()
+
+    items = []
+    for d in docs:
+        data = d.to_dict()
+
+        # 1) Scan time (string)
+        scan_time = data.get("scanTime", "")
+        # If stored as Firestore Timestamp, convert to ISO first:
+        if hasattr(scan_time, "isoformat"):
+            scan_time = scan_time.isoformat()
+
+        # 2) Spoilage days
+        days = data.get("spoilageDays", 0)
+
+        # 3) Predicted date: either stored, or derived
+        pred_date = data.get("predictedDate")
+        if not pred_date:
+            try:
+                base = datetime.fromisoformat(scan_time)
+                pred_date = (base + timedelta(days=days)).date().isoformat()
+            except Exception:
+                pred_date = ""
+
+        # 4) Confidence
+        confidence = data.get("confidence", 0)
+
+        # 5) Product name
+        product_name = data.get("productName", "Unknown")
+
+        # 6) Compute status
+        status = "fresh"
+        if days < 0:
+            status = "expired"
+        elif days <= 1:
+            status = "expiring"
+
+        items.append({
+            "id":            d.id,
+            "productName":   product_name,
+            "imageUrl":      data.get("imageUrl", ""),
+            "scanTime":      scan_time,
+            "predictedDate": pred_date,
+            "spoilageDays":  days,
+            "confidence":    confidence,
+            "storageType":   data.get("storageType", "room"),
+            "temperature":   data.get("temperature"),
+            "humidity":      data.get("humidity"),
+            "status":        status
+        })
+
+    return jsonify(items), 200
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

@@ -1,7 +1,15 @@
-**/node_modules/
-
+# Next.js build & cache
+client/.next/
 client/.env.local
 
-server/.env
+# Node modules
+client/node_modules/
 
+# Python virtualenv & uploads
+server/venv/
+server/uploads/
 server/__pycache__/
+
+# dotenv & service‐account
+*.env
+firebase-service-account.json
