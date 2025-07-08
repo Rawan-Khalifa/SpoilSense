@@ -11,6 +11,7 @@ import { useToast }            from "@/hooks/use-toast";
 import { auth, provider }      from "@/services/firebase";
 import { signInWithPopup }     from "firebase/auth";
 import { useAuth }             from "@/hooks/useAuth";
+import Image from "next/image";
 
 export default function LoginPage() {
   const { user, loading } = useAuth();
@@ -48,9 +49,15 @@ export default function LoginPage() {
         <Card>
           <CardHeader className="text-center">
             <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-blue-500 rounded-lg flex items-center justify-center mx-auto mb-4">
-              <Camera className="w-8 h-8 text-white" />
+              <Image
+                  src="/SpoilSense_logo.png"
+                  alt="SpoilSense Logo"
+                  width={64}
+                  height={64}
+                  className="object-contain"
+                />
             </div>
-            <CardTitle className="text-2xl">Welcome to SpoilSensei</CardTitle>
+            <CardTitle className="text-2xl">Welcome to SpoilSense</CardTitle>
             <CardDescription>Sign in to start predicting food spoilage and reducing waste</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

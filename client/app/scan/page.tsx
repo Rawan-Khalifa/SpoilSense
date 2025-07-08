@@ -324,11 +324,13 @@ export default function ScanPage() {
                     <Button onClick={handleSaveToInventory} className="flex-1">
                       <Save className="w-4 h-4 mr-2" /> Save
                     </Button>
-                    <Button variant="outline" onClick={handleRetake} className="flex-1">
-                      <RotateCcw className="w-4 h-4 mr-2" /> Retake
+                    <Button onClick={handleRetake} variant="outline" className="flex-1 bg-transparent">
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Retake
                     </Button>
-                    <Button variant="destructive" onClick={handleDelete} className="flex-1">
-                      <Trash2 className="w-4 h-4 mr-2" /> Delete
+                    <Button onClick={handleDelete} variant="destructive" className="flex-1">
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
                     </Button>
                   </CardContent>
                 </Card>
