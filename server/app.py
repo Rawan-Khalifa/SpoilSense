@@ -177,14 +177,12 @@ def list_inventory():
         # 2) Spoilage days
         days = data.get("spoilageDays", 0)
 
-        # 3) Predicted date: either stored, or derived
-        pred_date = data.get("predictedDate")
-        if not pred_date:
-            try:
-                base = datetime.fromisoformat(scan_time)
-                pred_date = (base + timedelta(days=days)).date().isoformat()
-            except Exception:
-                pred_date = ""
+        # 3) Predicted date: ALWAYS scanTime + spoilageDays
+        try:
+            base      = datetime.fromisoformat(scan_time)
+            pred_date = (base + timedelta(days=days)).date().isoformat()
+        except Exception:
+            pred_date = ""
 
         # 4) Confidence
         confidence = data.get("confidence", 0)
