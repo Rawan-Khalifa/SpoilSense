@@ -215,6 +215,33 @@ def list_inventory():
 
     return jsonify(items), 200
 
+@app.route("/inventory/<item_id>", methods=["DELETE"])
+@login_required
+def delete_inventory(item_id):
+    uid = request.uid
+    # 1) Firestore doc ref
+    doc_ref = db.collection("users").document(uid).collection("inventory").document(item_id)
+    doc = doc_ref.get()
+    if not doc.exists:
+        return jsonify({"error": "Not found"}), 404
+
+    data = doc.to_dict()
+    # 2) Delete local file (if you used UPLOAD_DIR)
+    img_url = data.get("imageUrl", "")
+    # imageUrl is like https://.../uploads/{uid}/{filename}
+    # so strip host + /uploads/{uid}/ to get filename
+    try:
+        _, _, path = img_url.partition("/uploads/")
+        fp = os.path.join(UPLOAD_DIR, path)
+        if os.path.exists(fp):
+            os.remove(fp)
+    except Exception:
+        pass
+
+    # 3) Delete Firestore doc
+    doc_ref.delete()
+    return jsonify({"status": "deleted"}), 200
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
