@@ -5,8 +5,13 @@ import { useAuth }            from "@/hooks/useAuth"
 import axios                  from "axios"
 import Loading                from "./loading"
 import { useToast }           from "@/hooks/use-toast"
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
-import { ArrowLeft, Search, Calendar, Clock, Thermometer, Droplets, AlertTriangle } from "lucide-react"
+import {
+  Card, CardHeader, CardTitle, CardContent
+} from "@/components/ui/card"
+import {
+  ArrowLeft, Search, Calendar, Clock,
+  Thermometer, Droplets, AlertTriangle, Trash2
+} from "lucide-react"
 import { Input }              from "@/components/ui/input"
 import { Badge }              from "@/components/ui/badge"
 import { Button }             from "@/components/ui/button"
@@ -20,43 +25,48 @@ interface InventoryItem {
   imageUrl: string
   scanTime: string
   predictedDate: string
-  spoilageDays: number
+  spoilageDays: number       // initial days
   confidence: number
-  storageType: "room" | "fridge"
+  storageType: "room"|"fridge"
   temperature?: number
   humidity?: number
-  status: Exclude<Status, "all">
+  status: Exclude<Status,"all">
 }
 
 export default function InventoryPage() {
   const { user, token, loading: authLoading } = useAuth()
   const { toast } = useToast()
-
   const [inventory, setInventory]       = useState<InventoryItem[]>([])
   const [searchTerm, setSearchTerm]     = useState<string>("")
   const [filterStatus, setFilterStatus] = useState<Status>("all")
   const [isLoading, setIsLoading]       = useState<boolean>(true)
 
+  // Fetch & shape
   useEffect(() => {
     if (!authLoading && user && token) {
       axios.get(`${process.env.NEXT_PUBLIC_API_URL}/inventory`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       .then(res => {
-        // Map raw to our InventoryItem & compute status
+        const now = new Date()
         const items: InventoryItem[] = res.data.map((item: any) => {
-          const days = item.spoilageDays as number
+          // compute remaining days
+          const predicted = new Date(item.predictedDate)
+          const msLeft    = predicted.getTime() - now.getTime()
+          const daysLeft  = Math.ceil(msLeft / (1000*60*60*24))
+          // compute status
           let status: InventoryItem["status"] = "fresh"
-          if (days < 0) status = "expired"
-          else if (days <= 1) status = "expiring"
+          if (daysLeft < 0)      status = "expired"
+          else if (daysLeft <= 1) status = "expiring"
 
           return {
             id:            item.id,
             productName:   item.productName,
-            imageUrl:      item.imageUrl,
+            // add cache-buster so user always sees latest upload
+            imageUrl:      `${item.imageUrl}?cb=${Date.now()}`,
             scanTime:      item.scanTime,
             predictedDate: item.predictedDate,
-            spoilageDays:  days,
+            spoilageDays:  item.spoilageDays,
             confidence:    item.confidence,
             storageType:   item.storageType,
             temperature:   item.temperature,
@@ -74,17 +84,35 @@ export default function InventoryPage() {
     }
   }, [authLoading, user, token, toast])
 
+  // Remove one item locally + server
+  const handleDelete = async (id: string) => {
+    if (!confirm("Remove this item?")) return
+    try {
+      await axios.delete(
+        `${process.env.NEXT_PUBLIC_API_URL}/inventory/${id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      setInventory(inv => inv.filter(i => i.id !== id))
+      toast({ title: "Deleted", variant: "default" })
+    } catch (e) {
+      console.error(e)
+      toast({ title: "Delete failed", variant: "destructive" })
+    }
+  }
+
+  // filter+search
   const filtered = inventory.filter(item => {
-    const nameMatches = item.productName.toLowerCase().includes(searchTerm.toLowerCase())
-    const statusMatches = filterStatus === "all" || item.status === filterStatus
-    return nameMatches && statusMatches
+    if (!item.productName.toLowerCase().includes(searchTerm.toLowerCase())) return false
+    if (filterStatus !== "all" && item.status !== filterStatus) return false
+    return true
   })
 
   if (authLoading || isLoading) return <Loading />
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      <div className="flex items-center mb-4 space-x-4">
+      {/* Header + Controls */}
+      <div className="flex flex-wrap items-center mb-6 gap-4">
         <Button variant="ghost" onClick={() => window.history.back()}>
           <ArrowLeft /> Back
         </Button>
@@ -92,20 +120,20 @@ export default function InventoryPage() {
           placeholder="Search…"
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
-          className="flex-1"
+          className="flex-1 max-w-xs"
           icon={<Search />}
         />
         <Select
           value={filterStatus}
-          onValueChange={(value: string) => setFilterStatus(value as Status)}
+          onValueChange={(v: string) => setFilterStatus(v as Status)}
         >
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-36">
             <SelectValue placeholder="Filter status" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
             <SelectItem value="fresh">Fresh</SelectItem>
-            <SelectItem value="expiring">Expiring</SelectItem>
+            <SelectItem value="expiring">Expiring Soon</SelectItem>
             <SelectItem value="expired">Expired</SelectItem>
           </SelectContent>
         </Select>
@@ -114,41 +142,83 @@ export default function InventoryPage() {
       {filtered.length === 0 ? (
         <div className="text-center text-gray-500 mt-20">No items found.</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(item => (
-            <Card key={item.id}>
-              <CardHeader>
-                <CardTitle className="flex justify-between items-center">
-                  {item.productName}
-                  <Badge
-                    variant={
-                      item.status === "expired"  ? "destructive" :
-                      item.status === "expiring" ? "outline"     :
-                                                   "secondary"
-                    }
-                  >
-                    {item.status}
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <img
-                  src={item.imageUrl}
-                  alt={item.productName}
-                  className="w-full h-48 object-cover rounded"
-                />
-                <div><Calendar className="inline-block mr-1" /> Scanned: {new Date(item.scanTime).toLocaleDateString()}</div>
-                <div><Clock    className="inline-block mr-1" /> Expires: {new Date(item.predictedDate).toLocaleDateString()}</div>
-                {item.temperature != null && (
-                  <div><Thermometer className="inline-block mr-1" /> Temp: {item.temperature}°C</div>
-                )}
-                {item.humidity != null && (
-                  <div><Droplets    className="inline-block mr-1" /> Humidity: {item.humidity}%</div>
-                )}
-                <div><AlertTriangle className="inline-block mr-1" /> Confidence: {item.confidence}%</div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filtered.map(item => {
+            // re-calc for UI
+            const now = new Date()
+            const pred = new Date(item.predictedDate)
+            const msLeft = pred.getTime() - now.getTime()
+            const daysLeft = Math.max(0, Math.ceil(msLeft / (1000*60*60*24)))
+            const pct = Math.max(0, Math.min(100, (daysLeft / item.spoilageDays) * 100))
+
+            return (
+              <Card key={item.id} className="relative">
+                {/* top-right delete */}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute top-2 right-2"
+                  onClick={() => handleDelete(item.id)}
+                >
+                  <Trash2 />
+                </Button>
+
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex justify-between items-center">
+                    {item.productName}
+                    <Badge
+                      variant={
+                        item.status === "expired"  ? "destructive" :
+                        item.status === "expiring" ? "outline"     :
+                                                     "secondary"
+                      }
+                    >
+                      {item.status}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-2">
+                  <div className="rounded overflow-hidden">
+                    <div className="h-2 bg-gray-200">
+                      <div
+                        className={`h-full ${
+                          item.status === "expired"  ? "bg-red-500" :
+                          item.status === "expiring" ? "bg-yellow-400" :
+                                                       "bg-green-500"
+                        }`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <img
+                      src={item.imageUrl}
+                      alt={item.productName}
+                      className="w-full h-44 object-cover mt-1"
+                    />
+                  </div>
+                  <div className="flex items-center text-sm text-gray-700">
+                    <Calendar className="mr-1" /> Scanned: {new Date(item.scanTime).toLocaleDateString()}
+                  </div>
+                  <div className="flex items-center text-sm text-gray-700">
+                    <Clock className="mr-1" /> Expires: {pred.toLocaleDateString()}
+                  </div>
+                  {item.storageType === "fridge" && item.temperature != null && (
+                    <div className="flex items-center text-sm text-gray-700">
+                      <Thermometer className="mr-1" /> {item.temperature}°C
+                    </div>
+                  )}
+                  {item.storageType === "fridge" && item.humidity != null && (
+                    <div className="flex items-center text-sm text-gray-700">
+                      <Droplets className="mr-1" /> {item.humidity}%
+                    </div>
+                  )}
+                  <div className="flex items-center text-sm text-gray-700">
+                    <AlertTriangle className="mr-1" /> Confidence: {item.confidence}%
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>
