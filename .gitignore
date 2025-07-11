@@ -13,3 +13,6 @@ server/__pycache__/
 # dotenv & service‐account
 *.env
 firebase-service-account.json
+
+# environment variables
+.env.local
