@@ -213,6 +213,7 @@ def list_inventory():
             "predictedDate": pred_date,
             "spoilageDays":  days,
             "confidence":    confidence,
+            "estimatedPrice": data.get("estimatedPrice", 0),
             "storageType":   data.get("storageType", "room"),
             "temperature":   data.get("temperature"),
             "humidity":      data.get("humidity"),
