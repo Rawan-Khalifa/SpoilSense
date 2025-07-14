@@ -42,6 +42,8 @@ export default function ScanPage() {
   // --- state ---
   const [selectedFile, setSelectedFile]     = useState<File|null>(null)
   const [selectedImage, setSelectedImage]   = useState<string|null>(null)
+  // hold our client-only timestamp
+  const [previewTime, setPreviewTime]       = useState<string>("")
   const [location, setLocation]             = useState<{lat:number,lon:number}|null>(null)
   const [locError, setLocError]             = useState<string|null>(null)
   const [storageType, setStorageType]       = useState<"room"|"fridge">("room")
@@ -53,6 +55,7 @@ export default function ScanPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+
   // --- get location once ---
   useEffect(() => {
     if (!location && !locError && navigator.geolocation) {
@@ -63,6 +66,15 @@ export default function ScanPage() {
       )
     }
   }, [location, locError])
+
+  useEffect(() => {
+    if (selectedImage) {
+      // only runs in the browser, after hydration
+      setPreviewTime(new Date().toLocaleString())
+    } else {
+      setPreviewTime("")
+    }
+  }, [selectedImage])
 
   // --- pick image ---
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -232,8 +244,10 @@ export default function ScanPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Preview</CardTitle>
-                <CardDescription>Scanned at {new Date().toLocaleString()}</CardDescription>
-              </CardHeader>
+                {/* now comes from state, so server & client match on first render */}
+                <CardDescription>
+                  {previewTime ? `Scanned at ${previewTime}` : ""}
+                </CardDescription>              </CardHeader>
               <CardContent>
                 <div className="w-full h-64 relative bg-gray-100 rounded overflow-hidden">
                   <Image src={selectedImage} alt="Preview" fill className="object-cover" />
