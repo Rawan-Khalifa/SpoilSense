@@ -68,6 +68,19 @@ def auth_login():
     }, merge=True)
     return jsonify({"status": "ok"}), 200
 
+# ─── Delete account ─────────────────────────────────────────────────────────────
+@app.route("/auth/delete", methods=["DELETE"])
+@login_required
+def auth_delete():
+    uid = request.uid
+
+    # 1) Remove Firestore user document
+    db.collection("users").document(uid).delete()
+    # 2) Delete from Firebase Authentication
+    admin_auth.delete_user(uid)
+
+    return jsonify({"status": "account deleted"}), 200
+
 # ─── Upload inventory (local FS) ───────────────────────────────────────────────
 @app.route("/inventory", methods=["POST"])
 @login_required
@@ -102,6 +115,21 @@ def upload_inventory():
 
         # 5) Call your structured spoilage estimator
         from openai_client import estimate_spoilage, estimate_price
+        try:
+            result = estimate_spoilage(image_url, lat, lon)
+            spoilage_days  = result["spoilage_days"]
+            product_name   = result["product_name"]
+            predicted_date = result["predicted_date"]
+            confidence     = result["confidence"]
+        except ValueError as e:
+            # This is likely our “Could not parse JSON from GPT response…” error
+            return jsonify({
+                "error":      "InvalidImage",
+                "message":    str(e),
+                "suggestion": "Please upload a clear photo of a food item and try again."
+            }), 400
+
+
         result = estimate_spoilage(image_url, lat, lon)
         product_name   = result["product_name"]
         spoilage_days  = result["spoilage_days"]

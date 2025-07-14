@@ -1,23 +1,62 @@
+// client/app/page.tsx
 "use client"
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Camera, Package, Scan, BarChart3, Clock, Leaf, LogOut } from "lucide-react"
+import {
+  Card, CardHeader, CardContent, CardDescription, CardTitle
+} from "@/components/ui/card"
+import {
+  Camera, Package, Scan, BarChart3, Clock, Leaf, LogOut
+} from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useAuth }                     from "@/hooks/useAuth"
-import axios                           from "axios"
-import Loading                         from "@/app/inventory/loading"
-import { useToast }                    from "@/hooks/use-toast"
-
+import { useAuth }  from "@/hooks/useAuth"
+import axios        from "axios"
+import Loading      from "@/app/inventory/loading"
+import { useToast } from "@/hooks/use-toast"
 
 export default function DashboardPage() {
   const router = useRouter()
+  const { user, token, loading: authLoading } = useAuth()
+  const { toast } = useToast()
+
+  const [itemsScanned, setItemsScanned]       = useState(0)
+  const [wastePrevented, setWastePrevented]   = useState(0)
+  const [expiringSoon, setExpiringSoon]       = useState(0)
+  const [statsLoading, setStatsLoading]       = useState(true)
+
+  // Fetch inventory and compute stats
+  useEffect(() => {
+    if (!authLoading && user && token) {
+      axios.get(`${process.env.NEXT_PUBLIC_API_URL}/inventory`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(res => {
+        const inv: any[] = res.data
+        setItemsScanned(inv.length)
+        // sum up estimatedPrice
+        const totalSaved = inv.reduce((sum, i) => sum + (i.estimatedPrice || 0), 0)
+        setWastePrevented(Math.round(totalSaved))
+        // count expiring within 1 day
+        const soon = inv.filter(i => i.status === "expiring").length
+        setExpiringSoon(soon)
+      })
+      .catch(err => {
+        console.error(err)
+        toast({ title: "Could not load dashboard stats", variant: "destructive" })
+      })
+      .finally(() => setStatsLoading(false))
+    }
+  }, [authLoading, user, token, toast])
 
   const handleLogout = () => {
     router.push("/")
+  }
+
+  if (authLoading || statsLoading) {
+    return <Loading />
   }
 
   return (
@@ -31,8 +70,8 @@ export default function DashboardPage() {
                 <Image
                   src="/SpoilSense_logo.png"
                   alt="SpoilSense Logo"
-                  width={64}
-                  height={64}
+                  width={32}
+                  height={32}
                   className="object-contain"
                 />
               </div>
@@ -46,8 +85,8 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Welcome */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back!</h1>
           <p className="text-lg text-gray-600">
@@ -57,34 +96,39 @@ export default function DashboardPage() {
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          {/* Items Scanned */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Items Scanned</CardTitle>
-              <Scan className="h-4 w-4 text-muted-foreground" />
+            <CardHeader className="flex items-center justify-between pb-2">
+              <CardTitle className="text-sm">Items Scanned</CardTitle>
+              <Scan className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">24</div>
-              <p className="text-xs text-muted-foreground">+12% from last week</p>
+              <div className="text-2xl font-bold">{itemsScanned}</div>
+              <p className="text-xs text-muted-foreground">total so far</p>
             </CardContent>
           </Card>
+
+          {/* Waste Prevented */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Waste Prevented</CardTitle>
-              <Leaf className="h-4 w-4 text-muted-foreground" />
+            <CardHeader className="flex items-center justify-between pb-2">
+              <CardTitle className="text-sm">Waste Prevented</CardTitle>
+              <Leaf className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">$127</div>
-              <p className="text-xs text-muted-foreground">Estimated savings this month</p>
+              <div className="text-2xl font-bold">${wastePrevented}</div>
+              <p className="text-xs text-muted-foreground">estimated saved</p>
             </CardContent>
           </Card>
+
+          {/* Expiring Soon */}
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Expiring Soon</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
+            <CardHeader className="flex items-center justify-between pb-2">
+              <CardTitle className="text-sm">Expiring Soon</CardTitle>
+              <Clock className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">3</div>
-              <p className="text-xs text-muted-foreground">Items expire within 24 hours</p>
+              <div className="text-2xl font-bold">{expiringSoon}</div>
+              <p className="text-xs text-muted-foreground">within 24 hrs</p>
             </CardContent>
           </Card>
         </div>
@@ -107,16 +151,13 @@ export default function DashboardPage() {
               <CardContent>
                 <div className="space-y-2">
                   <div className="flex items-center text-sm text-gray-600">
-                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                    AI-powered image analysis
+                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2" /> AI-powered image analysis
                   </div>
                   <div className="flex items-center text-sm text-gray-600">
-                    <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                    Environmental factor consideration
+                    <span className="w-2 h-2 bg-blue-500 rounded-full mr-2" /> Environmental factor consideration
                   </div>
                   <div className="flex items-center text-sm text-gray-600">
-                    <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                    Instant predictions
+                    <span className="w-2 h-2 bg-purple-500 rounded-full mr-2" /> Instant predictions
                   </div>
                 </div>
                 <Button className="w-full mt-4">Start Scanning</Button>
@@ -140,16 +181,13 @@ export default function DashboardPage() {
               <CardContent>
                 <div className="space-y-2">
                   <div className="flex items-center text-sm text-gray-600">
-                    <span className="w-2 h-2 bg-orange-500 rounded-full mr-2"></span>
-                    Track expiration dates
+                    <span className="w-2 h-2 bg-orange-500 rounded-full mr-2" /> Track expiration dates
                   </div>
                   <div className="flex items-center text-sm text-gray-600">
-                    <span className="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
-                    Get expiry alerts
+                    <span className="w-2 h-2 bg-red-500 rounded-full mr-2" /> Get expiry alerts
                   </div>
                   <div className="flex items-center text-sm text-gray-600">
-                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                    Export data
+                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2" /> Export data
                   </div>
                 </div>
                 <Button variant="outline" className="w-full mt-4 bg-transparent">
@@ -160,7 +198,7 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {/* App Info */}
+        {/* How It Works */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -194,7 +232,7 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
+      </main>
     </div>
   )
 }
