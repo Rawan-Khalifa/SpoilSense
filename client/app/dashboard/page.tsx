@@ -51,9 +51,22 @@ export default function DashboardPage() {
     }
   }, [authLoading, user, token, toast])
 
-  const handleLogout = () => {
-    router.push("/")
-  }
+  const { logout, deleteAccount } = useAuth();
+
+  // simple logout
+  const onLogout = async () => {
+    await logout();
+    router.push("/login");
+  };
+
+  // forget account
+  const onForget = async () => {
+    if (confirm("Delete your account permanently?")) {
+      await deleteAccount();
+      router.push("/login");
+    }
+  };
+
 
   if (authLoading || statsLoading) {
     return <Loading />
@@ -77,9 +90,12 @@ export default function DashboardPage() {
               </div>
               <span className="text-xl font-bold text-gray-900">SpoilSensei</span>
             </div>
-            <Button variant="ghost" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
+            <Button variant="ghost" onClick={onLogout}>
+              <LogOut className="w-4 h-4 mr-2" /> Logout
+            </Button>
+
+            <Button variant="destructive" onClick={onForget} className="ml-4">
+              Delete My Account
             </Button>
           </div>
         </div>
