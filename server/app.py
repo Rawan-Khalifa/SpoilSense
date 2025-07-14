@@ -101,14 +101,20 @@ def upload_inventory():
         image_url = f"{host}/uploads/{uid}/{unique}"
 
         # 5) Call your structured spoilage estimator
-        from openai_client import estimate_spoilage
+        from openai_client import estimate_spoilage, estimate_price
         result = estimate_spoilage(image_url, lat, lon)
         product_name   = result["product_name"]
         spoilage_days  = result["spoilage_days"]
         predicted_date = result["predicted_date"]
         confidence     = result["confidence"]
 
-        # 6) Assemble Firestore data for writing
+        # 6) Estimate a retail price via GPT
+        try:
+            price_usd = estimate_price(product_name)
+        except Exception:
+            price_usd = 0.0
+
+        # 7) Assemble Firestore data for writing
         write_data = {
             "productName":   product_name,
             "imageUrl":      image_url,
@@ -119,19 +125,20 @@ def upload_inventory():
             "registeredAt":  firestore.SERVER_TIMESTAMP,
             "spoilageDays":  spoilage_days,
             "predictedDate": predicted_date,
-            "confidence":    confidence
+            "confidence":    confidence,
+            "estimatedPrice": price_usd
         }
 
         if storage_type == "fridge":
             write_data["temperature"] = temp_override
             write_data["humidity"]    = humidity_override
 
-        # 7) Write to Firestore
+        # 8) Write to Firestore
         coll = db.collection("users").document(uid).collection("inventory")
         doc  = coll.document()
         doc.set(write_data)
 
-        # 8) Build a pure-Python response (no Firestore sentinels)
+        # 9) Build a pure-Python response (no Firestore sentinels)
         resp_data = {
             "id":            doc.id,
             "productName":   product_name,
@@ -139,6 +146,7 @@ def upload_inventory():
             "spoilageDays":  spoilage_days,
             "predictedDate": predicted_date,
             "confidence":    confidence,
+            "estimatedPrice": price_usd,
             "storageType":   storage_type,
             "scanTime":      write_data["scanTime"]
         }
