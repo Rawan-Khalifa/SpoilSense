@@ -62,3 +62,32 @@ def estimate_spoilage(image_url: str, latitude: float, longitude: float) -> dict
             raise ValueError(f"Missing '{key}' in GPT output: {result}")
     return result
 
+
+# ─── 3) Estimate the average retail price of a product in USD ─────────────────────────
+
+def estimate_price(product_name: str) -> float:
+    """
+    Ask GPT for the average US retail price in USD for the given product.
+    Returns a float.
+    """
+    prompt = (
+        f"""Estimate the average retail price in USD for "{product_name}" 
+        in the current US market. Respond with just the number, no currency symbol."""
+    )
+    resp = openai.responses.create(
+        model="gpt-4o",
+        input=[{
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": prompt}
+            ]
+        }]
+    )
+    text = resp.output_text.strip()
+    # Pull the first numeric match
+    match = re.search(r"[0-9]+(?:\\.[0-9]+)?", text)
+    if not match:
+        raise ValueError(f"Could not parse price from GPT response: {text!r}")
+    return float(match.group())
+
+
