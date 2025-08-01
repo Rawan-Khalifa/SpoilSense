@@ -16,3 +16,5 @@ firebase-service-account.json
 
 # environment variables
 .env.local
+
+.DS_Store
