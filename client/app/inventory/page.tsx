@@ -62,8 +62,7 @@ export default function InventoryPage() {
           return {
             id:            item.id,
             productName:   item.productName,
-            // add cache-buster so user always sees latest upload
-            imageUrl:      `${item.imageUrl}?cb=${Date.now()}`,
+            imageUrl:      item.imageUrl,
             scanTime:      item.scanTime,
             predictedDate: item.predictedDate,
             spoilageDays:  item.spoilageDays,
