@@ -161,12 +161,30 @@ def save_to_inventory():
     """Save prediction result to inventory"""
     uid = request.uid
     data = request.get_json()
-
+    
     try:
-        # Parse the prediction data and save to Firestore
-        scan_time = datetime.fromisoformat(data.get("scanTime"))
+        # Handle different date formats
+        scan_time_str = data.get("scanTime")
+        try:
+            # Try ISO format first
+            scan_time = datetime.fromisoformat(scan_time_str.replace('Z', '+00:00'))
+        except ValueError:
+            # Try parsing localized format
+            try:
+                scan_time = datetime.strptime(scan_time_str, "%m/%d/%Y, %I:%M:%S %p")
+            except ValueError:
+                # Fallback to current time
+                scan_time = datetime.utcnow()
+        
         expiration_date = scan_time + timedelta(days=data.get("spoilageDays"))
-
+        
+        # Get price estimate
+        try:
+            estimated_price = estimate_price(data.get("productName"))
+        except ValueError as e:
+            print(f"Price estimation failed: {e}")
+            estimated_price = 0.0  # Default price
+        
         record = {
             "imageUrl": data.get("imageUrl"),
             "scanTime": scan_time,
@@ -175,24 +193,25 @@ def save_to_inventory():
             "predictedDate": expiration_date,
             "confidence": data.get("confidence"),
             "storageType": data.get("storageType"),
-            "estimatedPrice": estimate_price(data.get("productName"))
+            "estimatedPrice": estimated_price,
+            "reasoning": data.get("reasoning", "")
         }
-
+        
         if data.get("storageType") == "fridge":
             record.update({
                 "temperature": data.get("temperature"),
                 "humidity": data.get("humidity")
             })
-
+        
         coll = db.collection("users").document(uid).collection("inventory")
         doc = coll.document()
         doc.set(record)
-
+        
         return jsonify({"status": "saved", "id": doc.id}), 200
-
-    except Exception:
+        
+    except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": "Save failed"}), 500
+        return jsonify({"error": f"Save failed: {str(e)}"}), 500
 
 # ─── Inventory: list scans ────────────────────────────────────────────────────
 @app.route("/inventory", methods=["GET"])
