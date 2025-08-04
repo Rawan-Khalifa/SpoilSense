@@ -58,15 +58,34 @@ export default function ScanPage() {
 
   // --- get location once ---
   useEffect(() => {
-    if (!location && !locError && navigator.geolocation) {
+    let watchId: number;
+    
+    if (navigator.geolocation) {
+      // Get initial location
       navigator.geolocation.getCurrentPosition(
         pos => setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
         err => setLocError(err.message),
         { enableHighAccuracy: true }
-      )
+      );
+      
+      // Watch for location changes
+      watchId = navigator.geolocation.watchPosition(
+        pos => {
+          const newLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          setLocation(newLocation);
+          // Optionally notify user of location change
+          toast({ title: "Location updated", description: "Using current location" });
+        },
+        err => setLocError(err.message),
+        { enableHighAccuracy: true, maximumAge: 300000 } // 5 minutes cache
+      );
     }
-  }, [location, locError])
-
+    
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+    };
+  }, []);
+  
   useEffect(() => {
     if (selectedImage) {
       // only runs in the browser, after hydration

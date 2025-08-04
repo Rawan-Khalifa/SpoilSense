@@ -23,7 +23,14 @@ export default function LoginPage() {
   useEffect(() => {
     if (!loading && user) {
       router.push("/dashboard");
-      toast({ title: `Welcome back, ${user.displayName}` });
+      // Check if this is truly a "new" login vs. auto-login
+      const isNewSession = sessionStorage.getItem('justLoggedIn');
+      if (isNewSession) {
+        toast({ title: `Welcome back, ${user.displayName}` });
+        sessionStorage.removeItem('justLoggedIn');
+      } else {
+        // Silent redirect for auto-login
+      }
     }
   }, [user, loading]);
 
@@ -31,7 +38,7 @@ export default function LoginPage() {
     setSigningIn(true);
     try {
       await signInWithPopup(auth, provider);
-      // no direct backend call here
+      sessionStorage.setItem('justLoggedIn', 'true');
     } catch (err: any) {
       console.error(err);
       toast({ title: "Sign-in failed", description: err.message, variant: "destructive" });
