@@ -193,6 +193,13 @@ export default function InventoryPage() {
                       src={item.imageUrl}
                       alt={item.productName}
                       className="w-full h-44 object-cover mt-1"
+                      onError={(e) => {
+                        // Fallback to a placeholder image
+                        e.currentTarget.src = '/placeholder-food.png';
+                      }}
+                      onLoad={() => {
+                        // Optional: Remove cache buster after successful load
+                      }}
                     />
                   </div>
                   <div className="flex items-center text-sm text-gray-700">

@@ -1,4 +1,3 @@
-
 # server/app.py
 import os
 from uuid import uuid4
@@ -48,7 +47,18 @@ def login_required(f):
 # ─── Serve uploaded files ─────────────────────────────────────────────────────
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
-    return send_from_directory(UPLOAD_DIR, filename)
+    """Serve uploaded files with proper headers"""
+    try:
+        response = send_from_directory(
+            UPLOAD_DIR, 
+            filename,
+            as_attachment=False
+        )
+        # Set cache headers manually
+        response.cache_control.max_age = 3600  # 1 hour
+        return response
+    except FileNotFoundError:
+        return jsonify({"error": "Image not found"}), 404
 
 # ─── External logic imports ───────────────────────────────────────────────────
 from openai_client import estimate_spoilage, estimate_price
@@ -80,28 +90,27 @@ def auth_delete():
     return jsonify({"status": "account deleted"}), 200
 
 # ─── Inventory: predict & save a scan ─────────────────────────────────────────
-@app.route("/inventory", methods=["POST"])
+@app.route("/predict", methods=["POST"])
 @login_required
-def upload_inventory():
+def predict_spoilage():
+    """Only predict, don't save to database"""
     uid = request.uid
-    # Parse inputs from form
     lat = request.form.get("latitude", type=float)
     lon = request.form.get("longitude", type=float)
     storage_type = request.form.get("storageType", default="room")
     scan_time_iso = request.form.get("scanTime")
     img = request.files.get("image")
-    img_url = request.form.get("imageUrl")
 
     # Validate coordinates
     if lat is None or lon is None:
         return jsonify({"error": "Missing latitude or longitude"}), 400
 
     # Validate image or URL
-    if img is None and not img_url:
-        return jsonify({"error": "Must include an image file or imageUrl"}), 400
+    if img is None:
+        return jsonify({"error": "Must include an image file"}), 400
 
     try:
-        # Store or reuse image URL
+        # Store image temporarily
         if img:
             filename = secure_filename(img.filename)
             ext = os.path.splitext(filename)[1]
@@ -112,72 +121,95 @@ def upload_inventory():
         else:
             image_url = img_url
 
-        # Parse or default scanTime
+        # Parse scanTime properly
         try:
-            scan_time = datetime.fromisoformat(scan_time_iso)
-        except Exception:
+            scan_time = datetime.fromisoformat(scan_time_iso.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
             scan_time = datetime.utcnow()
 
-        # Obtain spoilage prediction (days)
-        spoilage_res = estimate_spoilage(image_url, lat, lon)
-        product_name = spoilage_res.get("product_name")
-        spoilage_days = int(spoilage_res.get("spoilage_days", 0))
-        # Compute expiration date as scan_time + spoilage_days
-        expiration_date = scan_time + timedelta(days=spoilage_days)
-        confidence = spoilage_res.get("confidence")
-
-        # Optional price estimate
-        try:
-            price_usd = estimate_price(product_name)
-        except Exception:
-            price_usd = 0.0
-
-        # Build record
-        record = {
-            "latitude": lat,
-            "longitude": lon,
-            "storageType": storage_type,
-            "imageUrl": image_url,
-            "scanTime": scan_time,
-            "productName": product_name,
-            "spoilageDays": spoilage_days,
-            "predictedDate": expiration_date,
-            "confidence": confidence,
-            "estimatedPrice": price_usd
-        }
-        if storage_type == "fridge":
-            record["temperature"] = request.form.get("temperature", type=float)
-            record["humidity"] = request.form.get("humidity", type=float)
-
-        # Save to Firestore
-        coll = db.collection("users").document(uid).collection("inventory")
-        doc = coll.document()
-        doc.set(record)
-
-        # Prepare response
+        # Use local file path for OpenAI
+        spoilage_res = estimate_spoilage(save_path, lat, lon)
+        
         response = {
-            "id": doc.id,
-            "imageUrl": image_url,
+            "id": str(uuid4()),
+            "imageUrl": f"{UPLOAD_BASE}/uploads/{new_name}",
+            "productName": spoilage_res["product_name"],
+            "spoilageDays": spoilage_res["spoilage_days"],
             "storageType": storage_type,
-            "scanTime": scan_time.isoformat(),
-            "productName": product_name,
-            "spoilageDays": spoilage_days,
-            # return expiration date as ISO
-            "predictedDate": expiration_date.isoformat(),
-            "confidence": confidence,
-            "estimatedPrice": price_usd
+            "scanTime": scan_time.isoformat(),  # Ensure consistent format
+            "confidence": spoilage_res["confidence"],
+            "reasoning": spoilage_res.get("reasoning", "")
         }
+
         if storage_type == "fridge":
             response.update({
-                "temperature": record.get("temperature"),
-                "humidity": record.get("humidity")
+                "temperature": request.form.get("temperature", type=float),
+                "humidity": request.form.get("humidity", type=float)
             })
 
         return jsonify(response), 200
 
     except Exception:
         traceback.print_exc()
-        return jsonify({"error": "Server error"}), 500
+        return jsonify({"error": "Prediction failed"}), 500
+
+@app.route("/inventory", methods=["POST"])
+@login_required
+def save_to_inventory():
+    """Save prediction result to inventory"""
+    uid = request.uid
+    data = request.get_json()
+    
+    try:
+        # Handle different date formats
+        scan_time_str = data.get("scanTime")
+        try:
+            # Try ISO format first
+            scan_time = datetime.fromisoformat(scan_time_str.replace('Z', '+00:00'))
+        except ValueError:
+            # Try parsing localized format
+            try:
+                scan_time = datetime.strptime(scan_time_str, "%m/%d/%Y, %I:%M:%S %p")
+            except ValueError:
+                # Fallback to current time
+                scan_time = datetime.utcnow()
+        
+        expiration_date = scan_time + timedelta(days=data.get("spoilageDays"))
+        
+        # Get price estimate
+        try:
+            estimated_price = estimate_price(data.get("productName"))
+        except ValueError as e:
+            print(f"Price estimation failed: {e}")
+            estimated_price = 0.0  # Default price
+        
+        record = {
+            "imageUrl": data.get("imageUrl"),
+            "scanTime": scan_time,
+            "productName": data.get("productName"),
+            "spoilageDays": data.get("spoilageDays"),
+            "predictedDate": expiration_date,
+            "confidence": data.get("confidence"),
+            "storageType": data.get("storageType"),
+            "estimatedPrice": estimated_price,
+            "reasoning": data.get("reasoning", "")
+        }
+        
+        if data.get("storageType") == "fridge":
+            record.update({
+                "temperature": data.get("temperature"),
+                "humidity": data.get("humidity")
+            })
+        
+        coll = db.collection("users").document(uid).collection("inventory")
+        doc = coll.document()
+        doc.set(record)
+        
+        return jsonify({"status": "saved", "id": doc.id}), 200
+        
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": f"Save failed: {str(e)}"}), 500
 
 # ─── Inventory: list scans ────────────────────────────────────────────────────
 @app.route("/inventory", methods=["GET"])
