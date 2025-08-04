@@ -1,4 +1,3 @@
-
 # server/app.py
 import os
 from uuid import uuid4
@@ -80,9 +79,10 @@ def auth_delete():
     return jsonify({"status": "account deleted"}), 200
 
 # ─── Inventory: predict & save a scan ─────────────────────────────────────────
-@app.route("/inventory", methods=["POST"])
+@app.route("/predict", methods=["POST"])
 @login_required
-def upload_inventory():
+def predict_spoilage():
+    """Only predict, don't save to database"""
     uid = request.uid
     # Parse inputs from form
     lat = request.form.get("latitude", type=float)
@@ -101,7 +101,7 @@ def upload_inventory():
         return jsonify({"error": "Must include an image file or imageUrl"}), 400
 
     try:
-        # Store or reuse image URL
+        # Store image temporarily
         if img:
             filename = secure_filename(img.filename)
             ext = os.path.splitext(filename)[1]
@@ -122,62 +122,66 @@ def upload_inventory():
         spoilage_res = estimate_spoilage(image_url, lat, lon)
         product_name = spoilage_res.get("product_name")
         spoilage_days = int(spoilage_res.get("spoilage_days", 0))
-        # Compute expiration date as scan_time + spoilage_days
-        expiration_date = scan_time + timedelta(days=spoilage_days)
-        confidence = spoilage_res.get("confidence")
 
-        # Optional price estimate
-        try:
-            price_usd = estimate_price(product_name)
-        except Exception:
-            price_usd = 0.0
-
-        # Build record
-        record = {
-            "latitude": lat,
-            "longitude": lon,
-            "storageType": storage_type,
+        response = {
             "imageUrl": image_url,
-            "scanTime": scan_time,
             "productName": product_name,
             "spoilageDays": spoilage_days,
-            "predictedDate": expiration_date,
-            "confidence": confidence,
-            "estimatedPrice": price_usd
-        }
-        if storage_type == "fridge":
-            record["temperature"] = request.form.get("temperature", type=float)
-            record["humidity"] = request.form.get("humidity", type=float)
-
-        # Save to Firestore
-        coll = db.collection("users").document(uid).collection("inventory")
-        doc = coll.document()
-        doc.set(record)
-
-        # Prepare response
-        response = {
-            "id": doc.id,
-            "imageUrl": image_url,
             "storageType": storage_type,
             "scanTime": scan_time.isoformat(),
-            "productName": product_name,
-            "spoilageDays": spoilage_days,
-            # return expiration date as ISO
-            "predictedDate": expiration_date.isoformat(),
-            "confidence": confidence,
-            "estimatedPrice": price_usd
+            "confidence": spoilage_res.get("confidence")
         }
+
         if storage_type == "fridge":
             response.update({
-                "temperature": record.get("temperature"),
-                "humidity": record.get("humidity")
+                "temperature": request.form.get("temperature", type=float),
+                "humidity": request.form.get("humidity", type=float)
             })
 
         return jsonify(response), 200
 
     except Exception:
         traceback.print_exc()
-        return jsonify({"error": "Server error"}), 500
+        return jsonify({"error": "Prediction failed"}), 500
+
+@app.route("/inventory", methods=["POST"])
+@login_required
+def save_to_inventory():
+    """Save prediction result to inventory"""
+    uid = request.uid
+    data = request.get_json()
+
+    try:
+        # Parse the prediction data and save to Firestore
+        scan_time = datetime.fromisoformat(data.get("scanTime"))
+        expiration_date = scan_time + timedelta(days=data.get("spoilageDays"))
+
+        record = {
+            "imageUrl": data.get("imageUrl"),
+            "scanTime": scan_time,
+            "productName": data.get("productName"),
+            "spoilageDays": data.get("spoilageDays"),
+            "predictedDate": expiration_date,
+            "confidence": data.get("confidence"),
+            "storageType": data.get("storageType"),
+            "estimatedPrice": estimate_price(data.get("productName"))
+        }
+
+        if data.get("storageType") == "fridge":
+            record.update({
+                "temperature": data.get("temperature"),
+                "humidity": data.get("humidity")
+            })
+
+        coll = db.collection("users").document(uid).collection("inventory")
+        doc = coll.document()
+        doc.set(record)
+
+        return jsonify({"status": "saved", "id": doc.id}), 200
+
+    except Exception:
+        traceback.print_exc()
+        return jsonify({"error": "Save failed"}), 500
 
 # ─── Inventory: list scans ────────────────────────────────────────────────────
 @app.route("/inventory", methods=["GET"])
