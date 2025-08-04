@@ -2,7 +2,7 @@
 import os
 from uuid import uuid4
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import traceback
 import tempfile
 
@@ -92,7 +92,7 @@ def auth_login():
     lat = data.get("latitude")
     lon = data.get("longitude")
 
-    update_data = {"lastLogin": datetime.utcnow()}
+    update_data = {"lastLogin": datetime.now(timezone.utc)}  # Fixed deprecation
     if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
         update_data["latitude"] = lat
         update_data["longitude"] = lon
@@ -161,7 +161,7 @@ def predict_spoilage():
         try:
             scan_time = datetime.fromisoformat(scan_time_iso.replace('Z', '+00:00'))
         except (ValueError, AttributeError):
-            scan_time = datetime.utcnow()
+            scan_time = datetime.now(timezone.utc)  # Fixed
 
         # Use temporary file path for OpenAI
         spoilage_res = estimate_spoilage(tmp_file_path, lat, lon)
@@ -214,7 +214,7 @@ def save_to_inventory():
                 scan_time = datetime.strptime(scan_time_str, "%m/%d/%Y, %I:%M:%S %p")
             except ValueError:
                 # Fallback to current time
-                scan_time = datetime.utcnow()
+                scan_time = datetime.now(timezone.utc)  # Fixed
         
         expiration_date = scan_time + timedelta(days=data.get("spoilageDays"))
         
