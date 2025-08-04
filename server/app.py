@@ -1,148 +1,234 @@
-# server/app.py
 
+# server/app.py
 import os
 from uuid import uuid4
-from flask import Flask, request, jsonify
+from functools import wraps
+from datetime import datetime, timedelta
+import traceback
+
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from firebase_admin import auth as admin_auth, credentials, initialize_app, firestore
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
-from datetime import datetime
-import traceback
 
-# ─── Load environment ──────────────────────────────────────────────────────────
-load_dotenv()  # picks up server/.env
-
-# ─── Configure local file uploads ──────────────────────────────────────────────
-UPLOAD_BASE = os.getenv("UPLOAD_BASE_URL")
-BASE_DIR   = os.path.dirname(__file__)
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-app = Flask(
-    __name__,
-    static_url_path="/uploads",
-    static_folder=UPLOAD_DIR
-)
-
-# ─── Enable CORS for your React app ────────────────────────────────────────────
-CORS(app, origins=["http://localhost:3000"])
-
-# ─── Initialize Firebase Admin & Firestore ────────────────────────────────────
-cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+# ─── Load environment variables ───────────────────────────────────────────────
+load_dotenv()
+GOOGLE_CREDS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+cred = credentials.Certificate(GOOGLE_CREDS)
 initialize_app(cred)
 db = firestore.client()
 
-# ─── Auth decorator ────────────────────────────────────────────────────────────
+# ─── Flask application setup ─────────────────────────────────────────────────
+app = Flask(__name__)
+CORS(app)
+
+# ─── File upload configuration ────────────────────────────────────────────────
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
+UPLOAD_BASE = os.getenv("UPLOAD_BASE", "https://spoil-sense.loca.lt")
+if not os.path.isdir(UPLOAD_DIR):
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# ─── Decorator to verify Firebase ID token ────────────────────────────────────
 def login_required(f):
-    from functools import wraps
     @wraps(f)
     def wrapper(*args, **kwargs):
-        token = request.headers.get("Authorization", "").split().pop()
-        if not token:
-            return jsonify({"error": "Missing ID token"}), 401
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Unauthorized"}), 401
+        token = auth_header.split(" ", 1)[1]
         try:
             decoded = admin_auth.verify_id_token(token)
+            request.uid = decoded.get("uid")
         except Exception:
-            return jsonify({"error": "Invalid ID token"}), 401
-        request.uid = decoded["uid"]
+            return jsonify({"error": "Invalid or expired token"}), 401
         return f(*args, **kwargs)
     return wrapper
 
-# ─── Health check ──────────────────────────────────────────────────────────────
-@app.route("/", methods=["GET"])
-def health_check():
-    return jsonify({"status": "ok"}), 200
+# ─── Serve uploaded files ─────────────────────────────────────────────────────
+@app.route('/uploads/<path:filename>')
+def serve_upload(filename):
+    return send_from_directory(UPLOAD_DIR, filename)
 
-# ─── Login / upsert user ───────────────────────────────────────────────────────
+# ─── External logic imports ───────────────────────────────────────────────────
+from openai_client import estimate_spoilage, estimate_price
+
+# ─── Auth: login/upsert user & update location ────────────────────────────────
 @app.route("/auth/login", methods=["POST"])
 @login_required
 def auth_login():
     uid = request.uid
-    decoded = admin_auth.verify_id_token(request.headers["Authorization"].split().pop())
-    doc = db.collection("users").document(uid)
-    doc.set({
-        "email":     decoded.get("email", ""),
-        "name":      decoded.get("name", ""),
-        "updatedAt": firestore.SERVER_TIMESTAMP
-    }, merge=True)
+    data = request.get_json(silent=True) or {}
+    lat = data.get("latitude")
+    lon = data.get("longitude")
+
+    update_data = {"lastLogin": datetime.utcnow()}
+    if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+        update_data["latitude"] = lat
+        update_data["longitude"] = lon
+
+    db.collection("users").document(uid).set(update_data, merge=True)
     return jsonify({"status": "ok"}), 200
 
-# ─── Upload inventory (local FS) ───────────────────────────────────────────────
+# ─── Auth: delete account ───────────────────────────────────────────────────
+@app.route("/auth/delete", methods=["DELETE"])
+@login_required
+def auth_delete():
+    uid = request.uid
+    db.collection("users").document(uid).delete()
+    admin_auth.delete_user(uid)
+    return jsonify({"status": "account deleted"}), 200
+
+# ─── Inventory: predict & save a scan ─────────────────────────────────────────
 @app.route("/inventory", methods=["POST"])
 @login_required
 def upload_inventory():
+    uid = request.uid
+    # Parse inputs from form
+    lat = request.form.get("latitude", type=float)
+    lon = request.form.get("longitude", type=float)
+    storage_type = request.form.get("storageType", default="room")
+    scan_time_iso = request.form.get("scanTime")
+    img = request.files.get("image")
+    img_url = request.form.get("imageUrl")
+
+    # Validate coordinates
+    if lat is None or lon is None:
+        return jsonify({"error": "Missing latitude or longitude"}), 400
+
+    # Validate image or URL
+    if img is None and not img_url:
+        return jsonify({"error": "Must include an image file or imageUrl"}), 400
+
     try:
-        uid = request.uid
+        # Store or reuse image URL
+        if img:
+            filename = secure_filename(img.filename)
+            ext = os.path.splitext(filename)[1]
+            new_name = f"{uuid4().hex}{ext}"
+            save_path = os.path.join(UPLOAD_DIR, new_name)
+            img.save(save_path)
+            image_url = f"{UPLOAD_BASE}/uploads/{new_name}"
+        else:
+            image_url = img_url
 
-        # 1) Required: lat, lon, image
-        lat = request.form.get("latitude", type=float)
-        lon = request.form.get("longitude", type=float)
-        img = request.files.get("image")
-        if img is None or lat is None or lon is None:
-            return jsonify({"error": "Missing image or coordinates"}), 400
+        # Parse or default scanTime
+        try:
+            scan_time = datetime.fromisoformat(scan_time_iso)
+        except Exception:
+            scan_time = datetime.utcnow()
 
-        # 2) Optional metadata
-        storage_type      = request.form.get("storageType", "room")
-        temp_override     = request.form.get("temperature", type=float)
-        humidity_override = request.form.get("humidity", type=float)
-        scan_time_str     = request.form.get("scanTime")
+        # Obtain spoilage prediction (days)
+        spoilage_res = estimate_spoilage(image_url, lat, lon)
+        product_name = spoilage_res.get("product_name")
+        spoilage_days = int(spoilage_res.get("spoilage_days", 0))
+        # Compute expiration date as scan_time + spoilage_days
+        expiration_date = scan_time + timedelta(days=spoilage_days)
+        confidence = spoilage_res.get("confidence")
 
-        # 3) Save file locally under uploads/{uid}/…
-        user_dir = os.path.join(UPLOAD_DIR, uid)
-        os.makedirs(user_dir, exist_ok=True)
-        filename = secure_filename(img.filename)
-        unique   = f"{uuid4().hex}_{filename}"
-        filepath = os.path.join(user_dir, unique)
-        img.save(filepath)
+        # Optional price estimate
+        try:
+            price_usd = estimate_price(product_name)
+        except Exception:
+            price_usd = 0.0
 
-        # 4) Build public URL
-        host      = UPLOAD_BASE or request.host_url.rstrip("/")
-        image_url = f"{host}/uploads/{uid}/{unique}"
-
-        # 5) Call your spoilage estimator
-        from openai_client import estimate_spoilage
-        spoilage_days = estimate_spoilage(image_url, lat, lon)
-
-        # 6) Assemble Firestore data for writing
-        write_data = {
-            "imageUrl":     image_url,
-            "latitude":     lat,
-            "longitude":    lon,
-            "storageType":  storage_type,
-            "scanTime":     scan_time_str or datetime.utcnow().isoformat(),
-            "registeredAt": firestore.SERVER_TIMESTAMP,
-            "spoilageDays": spoilage_days
-        }
-        if storage_type == "fridge":
-            write_data["temperature"] = temp_override
-            write_data["humidity"]    = humidity_override
-
-        # 7) Write to Firestore
-        coll = db.collection("users").document(uid).collection("inventory")
-        doc  = coll.document()
-        doc.set(write_data)
-
-        # 8) Build a pure-Python response (no Firestore sentinels)
-        resp_data = {
-            "id":           doc.id,
-            "imageUrl":     image_url,
+        # Build record
+        record = {
+            "latitude": lat,
+            "longitude": lon,
+            "storageType": storage_type,
+            "imageUrl": image_url,
+            "scanTime": scan_time,
+            "productName": product_name,
             "spoilageDays": spoilage_days,
-            "storageType":  storage_type,
-            "scanTime":     write_data["scanTime"]
+            "predictedDate": expiration_date,
+            "confidence": confidence,
+            "estimatedPrice": price_usd
         }
         if storage_type == "fridge":
-            resp_data["temperature"] = temp_override
-            resp_data["humidity"]    = humidity_override
+            record["temperature"] = request.form.get("temperature", type=float)
+            record["humidity"] = request.form.get("humidity", type=float)
 
-        return jsonify(resp_data), 200
+        # Save to Firestore
+        coll = db.collection("users").document(uid).collection("inventory")
+        doc = coll.document()
+        doc.set(record)
 
-    except Exception as e:
+        # Prepare response
+        response = {
+            "id": doc.id,
+            "imageUrl": image_url,
+            "storageType": storage_type,
+            "scanTime": scan_time.isoformat(),
+            "productName": product_name,
+            "spoilageDays": spoilage_days,
+            # return expiration date as ISO
+            "predictedDate": expiration_date.isoformat(),
+            "confidence": confidence,
+            "estimatedPrice": price_usd
+        }
+        if storage_type == "fridge":
+            response.update({
+                "temperature": record.get("temperature"),
+                "humidity": record.get("humidity")
+            })
+
+        return jsonify(response), 200
+
+    except Exception:
         traceback.print_exc()
-        return jsonify({
-            "error":   "Internal server error",
-            "details": str(e)
-        }), 500
+        return jsonify({"error": "Server error"}), 500
 
+# ─── Inventory: list scans ────────────────────────────────────────────────────
+@app.route("/inventory", methods=["GET"])
+@login_required
+def list_inventory():
+    uid = request.uid
+    items = []
+    for doc in db.collection("users").document(uid).collection("inventory").stream():
+        data = doc.to_dict()
+        scanned = data.get("scanTime")
+        expiration = data.get("predictedDate")
+        items.append({
+            "id": doc.id,
+            "imageUrl": data.get("imageUrl"),
+            "storageType": data.get("storageType"),
+            "scanTime": scanned.isoformat() if isinstance(scanned, datetime) else scanned,
+            "productName": data.get("productName"),
+            "spoilageDays": data.get("spoilageDays"),
+            # stored predictedDate is expiration datetime
+            "predictedDate": expiration.isoformat() if isinstance(expiration, datetime) else expiration,
+            "confidence": data.get("confidence"),
+            "estimatedPrice": data.get("estimatedPrice"),
+            "temperature": data.get("temperature"),
+            "humidity": data.get("humidity")
+        })
+    return jsonify(items), 200
+
+# ─── Inventory: delete scan ───────────────────────────────────────────────────
+@app.route("/inventory/<item_id>", methods=["DELETE"])
+@login_required
+def delete_inventory(item_id):
+    uid = request.uid
+    doc_ref = db.collection("users").document(uid).collection("inventory").document(item_id)
+    snapshot = doc_ref.get()
+    if not snapshot.exists:
+        return jsonify({"error": "Not found"}), 404
+    data = snapshot.to_dict()
+    # Delete local file if exists
+    try:
+        _, _, path = data.get("imageUrl", "").partition("/uploads/")
+        file_path = os.path.join(UPLOAD_DIR, path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception:
+        pass
+    doc_ref.delete()
+    return jsonify({"status": "deleted"}), 200
+
+# ─── Run Flask server ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.getenv("PORT", 5000))
+    print(f"Starting SpoilSense on port {port}, uploads base {UPLOAD_BASE}")
+    app.run(host="0.0.0.0", port=port, debug=True)
+
