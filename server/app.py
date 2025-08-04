@@ -95,21 +95,19 @@ def auth_delete():
 def predict_spoilage():
     """Only predict, don't save to database"""
     uid = request.uid
-    # Parse inputs from form
     lat = request.form.get("latitude", type=float)
     lon = request.form.get("longitude", type=float)
     storage_type = request.form.get("storageType", default="room")
     scan_time_iso = request.form.get("scanTime")
     img = request.files.get("image")
-    img_url = request.form.get("imageUrl")
 
     # Validate coordinates
     if lat is None or lon is None:
         return jsonify({"error": "Missing latitude or longitude"}), 400
 
     # Validate image or URL
-    if img is None and not img_url:
-        return jsonify({"error": "Must include an image file or imageUrl"}), 400
+    if img is None:
+        return jsonify({"error": "Must include an image file"}), 400
 
     try:
         # Store image temporarily
@@ -123,24 +121,24 @@ def predict_spoilage():
         else:
             image_url = img_url
 
-        # Parse or default scanTime
+        # Parse scanTime properly
         try:
-            scan_time = datetime.fromisoformat(scan_time_iso)
-        except Exception:
+            scan_time = datetime.fromisoformat(scan_time_iso.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
             scan_time = datetime.utcnow()
 
-        # Obtain spoilage prediction (days)
-        spoilage_res = estimate_spoilage(image_url, lat, lon)
-        product_name = spoilage_res.get("product_name")
-        spoilage_days = int(spoilage_res.get("spoilage_days", 0))
-
+        # Use local file path for OpenAI
+        spoilage_res = estimate_spoilage(save_path, lat, lon)
+        
         response = {
-            "imageUrl": image_url,
-            "productName": product_name,
-            "spoilageDays": spoilage_days,
+            "id": str(uuid4()),
+            "imageUrl": f"{UPLOAD_BASE}/uploads/{new_name}",
+            "productName": spoilage_res["product_name"],
+            "spoilageDays": spoilage_res["spoilage_days"],
             "storageType": storage_type,
-            "scanTime": scan_time.isoformat(),
-            "confidence": spoilage_res.get("confidence")
+            "scanTime": scan_time.isoformat(),  # Ensure consistent format
+            "confidence": spoilage_res["confidence"],
+            "reasoning": spoilage_res.get("reasoning", "")
         }
 
         if storage_type == "fridge":
