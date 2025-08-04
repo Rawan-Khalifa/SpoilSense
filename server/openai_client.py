@@ -28,7 +28,7 @@ def get_weather(latitude: float, longitude: float) -> dict:
     data = resp.json()
     return {
         "temperature": data["current_weather"]["temperature"],
-        "humidity":    data["hourly"]["relative_humidity_2m"][-1]
+        "humidity": data["hourly"]["relative_humidity_2m"][-1]
     }
 
 # ─── 2) Main: estimate spoilage with structured output ─────────────────────────
@@ -79,6 +79,8 @@ Rules:
 
 Do not include any other text or explanation outside the JSON."""
 
+        print(f"🔄 Making OpenAI API call...")
+        
         resp = client.chat.completions.create(
             model="gpt-4o",
             messages=[{
@@ -91,7 +93,20 @@ Do not include any other text or explanation outside the JSON."""
             response_format={"type": "json_object"}
         )
         
+        print(f"✅ OpenAI API response received")
+        
+        # Check if response exists
+        if not resp or not resp.choices or len(resp.choices) == 0:
+            raise ValueError("Empty response from OpenAI API")
+        
+        if not resp.choices[0].message or not resp.choices[0].message.content:
+            raise ValueError("No content in OpenAI response")
+            
         text = resp.choices[0].message.content.strip()
+        print(f"📝 Raw OpenAI response: {text}")
+        
+        if not text:
+            raise ValueError("Empty content from OpenAI")
         
         try:
             # Try to parse the entire response as JSON
@@ -125,13 +140,24 @@ Do not include any other text or explanation outside the JSON."""
         except ValueError as e:
             raise ValueError(f"Invalid date format: {result['predicted_date']}") from e
         
+        print(f"✅ Validated result: {result}")
         return result
 
     except requests.RequestException as e:
         raise ValueError(f"Weather data unavailable: {e}")
     except FileNotFoundError:
         raise ValueError("Image file not found")
+    except openai.RateLimitError:
+        raise ValueError("Service temporarily busy. Please try again in a moment.")
+    except openai.AuthenticationError:
+        raise ValueError("API authentication failed. Please check configuration.")
+    except openai.BadRequestError as e:
+        if "image" in str(e).lower():
+            raise ValueError("Unable to process image. Please try with a clearer photo of food.")
+        else:
+            raise ValueError(f"Invalid request: {str(e)}")
     except Exception as e:
+        print(f"❌ Unexpected error in estimate_spoilage: {e}")
         if "Invalid image" in str(e) or "image" in str(e).lower():
             raise ValueError("Unable to process image. Please try with a clearer photo of food.")
         elif "rate limit" in str(e).lower():
@@ -167,6 +193,9 @@ Example: {{"price": 2.50, "reasoning": "typical grocery store price"}}"""
             response_format={"type": "json_object"}
         )
         
+        if not resp or not resp.choices or not resp.choices[0].message.content:
+            raise ValueError("Empty response from OpenAI")
+            
         text = resp.choices[0].message.content.strip()
         result = json.loads(text)
         
