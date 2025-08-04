@@ -133,12 +133,21 @@ def predict_spoilage():
     scan_time_iso = request.form.get("scanTime")
     img = request.files.get("image")
 
+    # Debug logging
+    print(f"Predict request from user {uid}")
+    print(f"Latitude: {lat}, Longitude: {lon}")
+    print(f"Storage type: {storage_type}")
+    print(f"Scan time: {scan_time_iso}")
+    print(f"Image file: {img.filename if img else 'None'}")
+
     # Validate coordinates
     if lat is None or lon is None:
+        print("❌ Missing coordinates")
         return jsonify({"error": "Missing latitude or longitude"}), 400
 
     # Validate image
     if img is None:
+        print("❌ Missing image")
         return jsonify({"error": "Must include an image file"}), 400
 
     try:
@@ -147,9 +156,12 @@ def predict_spoilage():
         ext = os.path.splitext(filename)[1]
         new_name = f"{uuid4().hex}{ext}"
         
+        print(f"Processing file: {filename} -> {new_name}")
+        
         # Upload to Firebase Storage
         img.seek(0)  # Reset file pointer
         image_url = upload_to_firebase_storage(img, new_name)
+        print(f"✅ Uploaded to Firebase: {image_url}")
         
         # Create temporary file for OpenAI processing
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_file:
@@ -157,14 +169,20 @@ def predict_spoilage():
             tmp_file.write(img.read())
             tmp_file_path = tmp_file.name
 
+        print(f"Created temp file: {tmp_file_path}")
+
         # Parse scanTime properly
         try:
             scan_time = datetime.fromisoformat(scan_time_iso.replace('Z', '+00:00'))
         except (ValueError, AttributeError):
-            scan_time = datetime.now(timezone.utc)  # Fixed
+            scan_time = datetime.now(timezone.utc)
+
+        print(f"Scan time: {scan_time}")
 
         # Use temporary file path for OpenAI
+        print("🤖 Calling OpenAI...")
         spoilage_res = estimate_spoilage(tmp_file_path, lat, lon)
+        print(f"✅ OpenAI result: {spoilage_res}")
         
         # Clean up temporary file
         os.unlink(tmp_file_path)
@@ -186,12 +204,15 @@ def predict_spoilage():
                 "humidity": request.form.get("humidity", type=float)
             })
 
+        print(f"✅ Returning response: {response}")
         return jsonify(response), 200
 
     except ValueError as e:
         # These are user-friendly error messages from OpenAI client
+        print(f"❌ ValueError: {e}")
         return jsonify({"error": str(e)}), 400
     except Exception as e:
+        print(f"❌ Unexpected error: {e}")
         traceback.print_exc()
         return jsonify({"error": "Prediction failed"}), 500
 
