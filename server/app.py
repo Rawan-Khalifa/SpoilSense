@@ -47,7 +47,16 @@ def login_required(f):
 # ─── Serve uploaded files ─────────────────────────────────────────────────────
 @app.route('/uploads/<path:filename>')
 def serve_upload(filename):
-    return send_from_directory(UPLOAD_DIR, filename)
+    """Serve uploaded files with proper headers"""
+    try:
+        return send_from_directory(
+            UPLOAD_DIR, 
+            filename,
+            as_attachment=False,
+            cache_timeout=3600  # Cache for 1 hour
+        )
+    except FileNotFoundError:
+        return jsonify({"error": "Image not found"}), 404
 
 # ─── External logic imports ───────────────────────────────────────────────────
 from openai_client import estimate_spoilage, estimate_price
