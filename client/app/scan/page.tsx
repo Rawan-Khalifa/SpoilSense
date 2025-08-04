@@ -132,7 +132,7 @@ export default function ScanPage() {
 
       // note: this endpoint ONLY predicts, does not save
       const resp = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/inventory`,  // <-- assume /predict returns GPT result only
+        `${process.env.NEXT_PUBLIC_API_URL}/predict`, // Changed endpoint
         form,
         {
           headers: {
@@ -176,28 +176,20 @@ export default function ScanPage() {
 
   // --- save to inventory (actually persists) ---
   const handleSaveToInventory = async () => {
-    if (!prediction) {
-      return toast({ title: "No prediction", description: "Run a prediction first.", variant: "destructive" })
-    }
+    if (!prediction) return;
+    
     try {
-      // reuse formData or build new
-      const form = new FormData()
-      form.append("imageUrl", prediction.imageUrl)
-      form.append("latitude",  location!.lat.toString())
-      form.append("longitude", location!.lon.toString())
-      form.append("storageType", prediction.storageType)
-      if (prediction.storageType === "fridge") {
-        form.append("temperature", prediction.temperature!.toString())
-        form.append("humidity",    prediction.humidity!.toString())
-      }
-      form.append("scanTime", new Date(prediction.scanTime).toISOString())
-
       await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL}/inventory`,
-        form,
-        { headers: { Authorization: `Bearer ${token}` } }
-      )
-      setShowSaveDialog(true)
+        prediction, // Send as JSON
+        { 
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          } 
+        }
+      );
+      setShowSaveDialog(true);
     } catch (err: any) {
       console.error(err)
       toast({
