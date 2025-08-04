@@ -49,12 +49,14 @@ def login_required(f):
 def serve_upload(filename):
     """Serve uploaded files with proper headers"""
     try:
-        return send_from_directory(
+        response = send_from_directory(
             UPLOAD_DIR, 
             filename,
-            as_attachment=False,
-            cache_timeout=3600  # Cache for 1 hour
+            as_attachment=False
         )
+        # Set cache headers manually
+        response.cache_control.max_age = 3600  # 1 hour
+        return response
     except FileNotFoundError:
         return jsonify({"error": "Image not found"}), 404
 

@@ -5,6 +5,7 @@ import re
 import json
 import requests
 import openai
+import base64
 
 # ─── 0) Configure OpenAI API key ───────────────────────────────────────────────
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -28,39 +29,46 @@ def get_weather(latitude: float, longitude: float) -> dict:
     }
 
 # ─── 2) Main: estimate spoilage with structured output ─────────────────────────
-def estimate_spoilage(image_url: str, latitude: float, longitude: float) -> dict:
-    weather = get_weather(latitude, longitude)
-    prompt = (
-        f"The current temperature is {weather['temperature']}°C and "
-        f"relative humidity is {weather['humidity']}%.\n\n"
-        "Analyze the image of a food item and respond with a JSON object containing exactly these keys:"
-        "\n - 'product_name': the name of the food item"
-        "\n - 'spoilage_days': integer days until spoilage"
-        "\n - 'predicted_date': estimated spoilage date in YYYY-MM-DD format"
-        "\n - 'confidence': your confidence percentage (0-100)"
-        "\nProvide only valid JSON in your reply."
-    )
-    resp = openai.responses.create(
-        model="gpt-4o",
-        input=[{
-            "role": "user",
-            "content": [
-                {"type": "input_text",  "text": prompt},
-                {"type": "input_image", "image_url": image_url}
-            ]
-        }]
-    )
-    text = resp.output_text.strip()
-    # Extract JSON substring
-    match = re.search(r"(\{.*\})", text, re.DOTALL)
-    if not match:
-        raise ValueError(f"Could not parse JSON from GPT response: {text!r}")
-    result = json.loads(match.group(1))
-    # Validate keys
-    for key in ("product_name", "spoilage_days", "predicted_date", "confidence"):
-        if key not in result:
-            raise ValueError(f"Missing '{key}' in GPT output: {result}")
-    return result
+def estimate_spoilage(image_path_or_url, lat, lon):
+    """
+    Estimate spoilage using local image file or URL
+    """
+    try:
+        # If it's a local file path, read and encode as base64
+        if os.path.exists(image_path_or_url):
+            with open(image_path_or_url, "rb") as image_file:
+                base64_image = base64.b64encode(image_file.read()).decode('utf-8')
+            image_content = f"data:image/jpeg;base64,{base64_image}"
+        else:
+            # Fallback to URL (though this might still fail)
+            image_content = image_path_or_url
+        
+        resp = openai.chat.completions.create(
+            model="gpt-4o",
+            messages=[{
+                "role": "user", 
+                "content": [
+                    {"type": "text", "text": f"Analyze this food image. Latitude: {lat}, Longitude: {lon}. Estimate spoilage days and identify the food item."},
+                    {"type": "image_url", "image_url": {"url": image_content}}
+                ]
+            }]
+        )
+        
+        text = resp.choices[0].message.content
+        # Extract JSON substring
+        match = re.search(r"(\{.*\})", text, re.DOTALL)
+        if not match:
+            raise ValueError(f"Could not parse JSON from GPT response: {text!r}")
+        result = json.loads(match.group(1))
+        # Validate keys
+        for key in ("product_name", "spoilage_days", "predicted_date", "confidence"):
+            if key not in result:
+                raise ValueError(f"Missing '{key}' in GPT output: {result}")
+        return result
+
+    except Exception as e:
+        print(f"OpenAI API error: {e}")
+        raise
 
 
 # ─── 3) Estimate the average retail price of a product in USD ─────────────────────────
