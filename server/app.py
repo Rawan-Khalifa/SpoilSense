@@ -48,20 +48,28 @@ def upload_to_firebase_storage(file, filename):
     Upload file to Firebase Storage and return public URL
     """
     try:
+        print(f"🔄 Uploading {filename} to Firebase Storage...")
+        
         # Create a blob in the bucket
         blob = bucket.blob(f"food-images/{filename}")
         
         # Upload the file
         blob.upload_from_file(file, content_type=file.content_type)
+        print(f"✅ File uploaded successfully")
         
         # Make the blob publicly readable
         blob.make_public()
+        print(f"✅ File made public")
         
         # Return the public URL
-        return blob.public_url
+        public_url = blob.public_url
+        print(f"✅ Public URL: {public_url}")
+        return public_url
+        
     except Exception as e:
-        print(f"Firebase Storage upload error: {e}")
-        raise
+        print(f"❌ Firebase Storage upload error: {e}")
+        traceback.print_exc()
+        raise ValueError(f"Failed to upload image: {str(e)}")
 
 # ─── Helper function to delete from Firebase Storage ───────────────────────────
 def delete_from_firebase_storage(image_url):
