@@ -118,17 +118,18 @@ export default function ScanPage() {
 
     setIsLoading(true)
     try {
-      const form = new FormData()
-      form.append("image", selectedFile)
-      form.append("latitude",  location.lat.toString())
-      form.append("longitude", location.lon.toString())
-      form.append("storageType", storageType)
+      const form = new FormData();
+      form.append("image", selectedFile!);
+      form.append("latitude", location!.lat.toString());
+      form.append("longitude", location!.lon.toString());
+      form.append("storageType", storageType);
+      // Send proper ISO string instead of localized string
+      form.append("scanTime", new Date().toISOString());
+      
       if (storageType === "fridge") {
-        form.append("temperature", temperature[0].toString())
-        form.append("humidity",    humidity[0].toString())
+        form.append("temperature", temperature[0].toString());
+        form.append("humidity", humidity[0].toString());
       }
-      const nowIso = new Date().toISOString()
-      form.append("scanTime", nowIso)
 
       // note: this endpoint ONLY predicts, does not save
       const resp = await axios.post(
@@ -142,7 +143,7 @@ export default function ScanPage() {
         }
       )
       const data: PredictionResult = resp.data
-      data.scanTime = new Date(data.scanTime || nowIso).toLocaleString()
+      data.scanTime = new Date(data.scanTime || new Date().toISOString()).toLocaleString()
       setPrediction(data)
 
       toast({
