@@ -2,12 +2,13 @@
 import os
 from uuid import uuid4
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import traceback
+import tempfile
 
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify
 from flask_cors import CORS
-from firebase_admin import auth as admin_auth, credentials, initialize_app, firestore
+from firebase_admin import auth as admin_auth, credentials, initialize_app, firestore, storage
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 
@@ -15,18 +16,15 @@ from dotenv import load_dotenv
 load_dotenv()
 GOOGLE_CREDS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 cred = credentials.Certificate(GOOGLE_CREDS)
-initialize_app(cred)
+initialize_app(cred, {
+    'storageBucket': 'spoilsense-9d6d0.firebasestorage.app'
+})
 db = firestore.client()
+bucket = storage.bucket()
 
 # ─── Flask application setup ─────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app)
-
-# ─── File upload configuration ────────────────────────────────────────────────
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", "uploads")
-UPLOAD_BASE = os.getenv("UPLOAD_BASE", "https://spoil-sense.loca.lt")
-if not os.path.isdir(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ─── Decorator to verify Firebase ID token ────────────────────────────────────
 def login_required(f):
@@ -44,21 +42,51 @@ def login_required(f):
         return f(*args, **kwargs)
     return wrapper
 
-# ─── Serve uploaded files ─────────────────────────────────────────────────────
-@app.route('/uploads/<path:filename>')
-def serve_upload(filename):
-    """Serve uploaded files with proper headers"""
+# ─── Helper function to upload to Firebase Storage ────────────────────────────
+def upload_to_firebase_storage(file, filename):
+    """
+    Upload file to Firebase Storage and return public URL
+    """
     try:
-        response = send_from_directory(
-            UPLOAD_DIR, 
-            filename,
-            as_attachment=False
-        )
-        # Set cache headers manually
-        response.cache_control.max_age = 3600  # 1 hour
-        return response
-    except FileNotFoundError:
-        return jsonify({"error": "Image not found"}), 404
+        print(f"🔄 Uploading {filename} to Firebase Storage...")
+        
+        # Create a blob in the bucket
+        blob = bucket.blob(f"food-images/{filename}")
+        
+        # Upload the file
+        blob.upload_from_file(file, content_type=file.content_type)
+        print(f"✅ File uploaded successfully")
+        
+        # Make the blob publicly readable
+        blob.make_public()
+        print(f"✅ File made public")
+        
+        # Return the public URL
+        public_url = blob.public_url
+        print(f"✅ Public URL: {public_url}")
+        return public_url
+        
+    except Exception as e:
+        print(f"❌ Firebase Storage upload error: {e}")
+        traceback.print_exc()
+        raise ValueError(f"Failed to upload image: {str(e)}")
+
+# ─── Helper function to delete from Firebase Storage ───────────────────────────
+def delete_from_firebase_storage(image_url):
+    """
+    Delete file from Firebase Storage given its public URL
+    """
+    try:
+        # Extract filename from URL
+        # URL format: https://storage.googleapis.com/spoilsense-9d6d0.firebasestorage.app/food-images/filename.ext
+        if "food-images/" in image_url:
+            filename = image_url.split("food-images/")[1].split("?")[0]  # Remove query params
+            blob = bucket.blob(f"food-images/{filename}")
+            if blob.exists():
+                blob.delete()
+                print(f"Deleted {filename} from Firebase Storage")
+    except Exception as e:
+        print(f"Error deleting from Firebase Storage: {e}")
 
 # ─── External logic imports ───────────────────────────────────────────────────
 from openai_client import estimate_spoilage, estimate_price
@@ -72,7 +100,7 @@ def auth_login():
     lat = data.get("latitude")
     lon = data.get("longitude")
 
-    update_data = {"lastLogin": datetime.utcnow()}
+    update_data = {"lastLogin": datetime.now(timezone.utc)}  # Fixed deprecation
     if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
         update_data["latitude"] = lat
         update_data["longitude"] = lon
@@ -85,6 +113,18 @@ def auth_login():
 @login_required
 def auth_delete():
     uid = request.uid
+    
+    # Delete all user's images from Firebase Storage
+    try:
+        for doc in db.collection("users").document(uid).collection("inventory").stream():
+            data = doc.to_dict()
+            image_url = data.get("imageUrl")
+            if image_url:
+                delete_from_firebase_storage(image_url)
+    except Exception as e:
+        print(f"Error cleaning up user images: {e}")
+    
+    # Delete user data and Firebase Auth user
     db.collection("users").document(uid).delete()
     admin_auth.delete_user(uid)
     return jsonify({"status": "account deleted"}), 200
@@ -101,42 +141,67 @@ def predict_spoilage():
     scan_time_iso = request.form.get("scanTime")
     img = request.files.get("image")
 
+    # Debug logging
+    print(f"Predict request from user {uid}")
+    print(f"Latitude: {lat}, Longitude: {lon}")
+    print(f"Storage type: {storage_type}")
+    print(f"Scan time: {scan_time_iso}")
+    print(f"Image file: {img.filename if img else 'None'}")
+
     # Validate coordinates
     if lat is None or lon is None:
+        print("❌ Missing coordinates")
         return jsonify({"error": "Missing latitude or longitude"}), 400
 
-    # Validate image or URL
+    # Validate image
     if img is None:
+        print("❌ Missing image")
         return jsonify({"error": "Must include an image file"}), 400
 
     try:
-        # Store image temporarily
-        if img:
-            filename = secure_filename(img.filename)
-            ext = os.path.splitext(filename)[1]
-            new_name = f"{uuid4().hex}{ext}"
-            save_path = os.path.join(UPLOAD_DIR, new_name)
-            img.save(save_path)
-            image_url = f"{UPLOAD_BASE}/uploads/{new_name}"
-        else:
-            image_url = img_url
+        # Generate unique filename
+        filename = secure_filename(img.filename)
+        ext = os.path.splitext(filename)[1]
+        new_name = f"{uuid4().hex}{ext}"
+        
+        print(f"Processing file: {filename} -> {new_name}")
+        
+        # Upload to Firebase Storage
+        img.seek(0)  # Reset file pointer
+        image_url = upload_to_firebase_storage(img, new_name)
+        print(f"✅ Uploaded to Firebase: {image_url}")
+        
+        # Create temporary file for OpenAI processing
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp_file:
+            img.seek(0)  # Reset file pointer again
+            tmp_file.write(img.read())
+            tmp_file_path = tmp_file.name
+
+        print(f"Created temp file: {tmp_file_path}")
 
         # Parse scanTime properly
         try:
             scan_time = datetime.fromisoformat(scan_time_iso.replace('Z', '+00:00'))
         except (ValueError, AttributeError):
-            scan_time = datetime.utcnow()
+            scan_time = datetime.now(timezone.utc)
 
-        # Use local file path for OpenAI
-        spoilage_res = estimate_spoilage(save_path, lat, lon)
+        print(f"Scan time: {scan_time}")
+
+        # Use temporary file path for OpenAI
+        print("🤖 Calling OpenAI...")
+        spoilage_res = estimate_spoilage(tmp_file_path, lat, lon)
+        print(f"✅ OpenAI result: {spoilage_res}")
+        
+        # Clean up temporary file
+        os.unlink(tmp_file_path)
         
         response = {
             "id": str(uuid4()),
-            "imageUrl": f"{UPLOAD_BASE}/uploads/{new_name}",
+            "imageUrl": image_url,  # Firebase Storage URL
             "productName": spoilage_res["product_name"],
             "spoilageDays": spoilage_res["spoilage_days"],
             "storageType": storage_type,
-            "scanTime": scan_time.isoformat(),  # Ensure consistent format
+            "scanTime": scan_time.isoformat(),
             "confidence": spoilage_res["confidence"],
             "reasoning": spoilage_res.get("reasoning", "")
         }
@@ -147,9 +212,15 @@ def predict_spoilage():
                 "humidity": request.form.get("humidity", type=float)
             })
 
+        print(f"✅ Returning response: {response}")
         return jsonify(response), 200
 
-    except Exception:
+    except ValueError as e:
+        # These are user-friendly error messages from OpenAI client
+        print(f"❌ ValueError: {e}")
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
         traceback.print_exc()
         return jsonify({"error": "Prediction failed"}), 500
 
@@ -172,7 +243,7 @@ def save_to_inventory():
                 scan_time = datetime.strptime(scan_time_str, "%m/%d/%Y, %I:%M:%S %p")
             except ValueError:
                 # Fallback to current time
-                scan_time = datetime.utcnow()
+                scan_time = datetime.now(timezone.utc)  # Fixed
         
         expiration_date = scan_time + timedelta(days=data.get("spoilageDays"))
         
@@ -228,7 +299,6 @@ def list_inventory():
             "scanTime": scanned.isoformat() if isinstance(scanned, datetime) else scanned,
             "productName": data.get("productName"),
             "spoilageDays": data.get("spoilageDays"),
-            # stored predictedDate is expiration datetime
             "predictedDate": expiration.isoformat() if isinstance(expiration, datetime) else expiration,
             "confidence": data.get("confidence"),
             "estimatedPrice": data.get("estimatedPrice"),
@@ -246,21 +316,52 @@ def delete_inventory(item_id):
     snapshot = doc_ref.get()
     if not snapshot.exists:
         return jsonify({"error": "Not found"}), 404
+    
     data = snapshot.to_dict()
-    # Delete local file if exists
-    try:
-        _, _, path = data.get("imageUrl", "").partition("/uploads/")
-        file_path = os.path.join(UPLOAD_DIR, path)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-    except Exception:
-        pass
+    
+    # Delete image from Firebase Storage
+    image_url = data.get("imageUrl")
+    if image_url:
+        delete_from_firebase_storage(image_url)
+    
+    # Delete database record
     doc_ref.delete()
     return jsonify({"status": "deleted"}), 200
+
+# ─── Test: weather API connectivity ───────────────────────────────────────────
+@app.route("/test/weather", methods=["GET"])
+def test_weather():
+    """Test endpoint to debug weather API issues"""
+    lat = request.args.get("lat", default=40.7128, type=float)  # NYC default
+    lon = request.args.get("lon", default=-74.0060, type=float)
+    
+    try:
+        from openai_client import get_weather, test_weather_connectivity
+        
+        # First test basic connectivity
+        connectivity_ok = test_weather_connectivity()
+        
+        if not connectivity_ok:
+            return jsonify({"error": "Connectivity test failed"}), 500
+        
+        # Then test actual weather fetch
+        weather_data = get_weather(lat, lon)
+        
+        return jsonify({
+            "status": "success",
+            "weather": weather_data,
+            "coordinates": {"lat": lat, "lon": lon}
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "coordinates": {"lat": lat, "lon": lon}
+        }), 500
 
 # ─── Run Flask server ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    print(f"Starting SpoilSense on port {port}, uploads base {UPLOAD_BASE}")
+    print(f"Starting SpoilSense on port {port}")
     app.run(host="0.0.0.0", port=port, debug=True)
 
