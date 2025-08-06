@@ -328,6 +328,37 @@ def delete_inventory(item_id):
     doc_ref.delete()
     return jsonify({"status": "deleted"}), 200
 
+# ─── Test: weather API connectivity ───────────────────────────────────────────
+@app.route("/test/weather", methods=["GET"])
+def test_weather():
+    """Test endpoint to debug weather API issues"""
+    lat = request.args.get("lat", default=40.7128, type=float)  # NYC default
+    lon = request.args.get("lon", default=-74.0060, type=float)
+    
+    try:
+        from openai_client import get_weather, test_weather_connectivity
+        
+        # First test basic connectivity
+        connectivity_ok = test_weather_connectivity()
+        
+        if not connectivity_ok:
+            return jsonify({"error": "Connectivity test failed"}), 500
+        
+        # Then test actual weather fetch
+        weather_data = get_weather(lat, lon)
+        
+        return jsonify({
+            "status": "success",
+            "weather": weather_data,
+            "coordinates": {"lat": lat, "lon": lon}
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "coordinates": {"lat": lat, "lon": lon}
+        }), 500
+
 # ─── Run Flask server ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
