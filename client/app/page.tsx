@@ -22,7 +22,7 @@ export default function LandingPage() {
                   className="object-contain"
                 />
               </div>
-              <span className="text-xl font-bold text-gray-900">SpoilSensei</span>
+              <span className="text-xl font-bold text-gray-900">SpoilSense</span>
             </div>
             <div className="flex items-center space-x-4">
               <Link href="/login">
@@ -47,7 +47,7 @@ export default function LandingPage() {
             <span className="block text-green-600">Before It Spoils Your Business</span>
           </h1>
           <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-            SpoilSensei uses advanced AI and environmental data to predict when your food will expire, helping cafes,
+            SpoilSense uses advanced AI and environmental data to predict when your food will expire, helping cafes,
             restaurants, and households reduce waste and save money.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -63,7 +63,7 @@ export default function LandingPage() {
           <div className="mt-12">
             <Image
               src="/LandingPage_image.png"
-              alt="SpoilSensei Dashboard"
+              alt="SpoilSense Dashboard"
               width={600}
               height={400}
               className="mx-auto rounded-lg shadow-2xl"
@@ -186,7 +186,7 @@ export default function LandingPage() {
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-4">Ready to Reduce Food Waste?</h2>
           <p className="text-xl text-green-100 mb-8">
-            Join thousands of businesses and households already saving money with SpoilSensei
+            Join thousands of businesses and households already saving money with SpoilSense
           </p>
           <Link href="/login">
             <Button size="lg" variant="secondary">
@@ -241,7 +241,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; 2024 SpoilSensei. All rights reserved.</p>
+            <p>&copy; 2024 SpoilSense. All rights reserved.</p>
           </div>
         </div>
       </footer>
