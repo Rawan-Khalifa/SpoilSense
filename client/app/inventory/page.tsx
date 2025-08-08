@@ -43,13 +43,17 @@ export default function InventoryPage() {
 
   // Fetch & shape
   useEffect(() => {
-    if (!authLoading && user && token) {
-      axios.get(`${process.env.NEXT_PUBLIC_API_URL}/inventory`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then(res => {
+    if (!token) return
+
+    const fetchInventory = async () => {
+      try {
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory`, // Changed from NEXT_PUBLIC_API_URL
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        
         const now = new Date()
-        const items: InventoryItem[] = res.data.map((item: any) => {
+        const items: InventoryItem[] = response.data.map((item: any) => {
           // compute remaining days
           const predicted = new Date(item.predictedDate)
           const msLeft    = predicted.getTime() - now.getTime()
@@ -62,8 +66,7 @@ export default function InventoryPage() {
           return {
             id:            item.id,
             productName:   item.productName,
-            // add cache-buster so user always sees latest upload
-            imageUrl:      `${item.imageUrl}?cb=${Date.now()}`,
+            imageUrl:      item.imageUrl,
             scanTime:      item.scanTime,
             predictedDate: item.predictedDate,
             spoilageDays:  item.spoilageDays,
@@ -75,21 +78,23 @@ export default function InventoryPage() {
           }
         })
         setInventory(items)
-      })
-      .catch(err => {
-        console.error(err)
+      } catch (error) {
+        console.error(error)
         toast({ title: "Failed to load inventory", variant: "destructive" })
-      })
-      .finally(() => setIsLoading(false))
+      } finally {
+        setIsLoading(false)
+      }
     }
-  }, [authLoading, user, token, toast])
+
+    fetchInventory()
+  }, [token, toast])
 
   // Remove one item locally + server
   const handleDelete = async (id: string) => {
     if (!confirm("Remove this item?")) return
     try {
       await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/inventory/${id}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory/${id}`, // Changed from NEXT_PUBLIC_API_URL
         { headers: { Authorization: `Bearer ${token}` } }
       )
       setInventory(inv => inv.filter(i => i.id !== id))
@@ -193,6 +198,13 @@ export default function InventoryPage() {
                       src={item.imageUrl}
                       alt={item.productName}
                       className="w-full h-44 object-cover mt-1"
+                      onError={(e) => {
+                        // Fallback to a placeholder image
+                        e.currentTarget.src = '/placeholder-food.png';
+                      }}
+                      onLoad={() => {
+                        // Optional: Remove cache buster after successful load
+                      }}
                     />
                   </div>
                   <div className="flex items-center text-sm text-gray-700">

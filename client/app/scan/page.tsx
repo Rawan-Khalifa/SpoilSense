@@ -52,21 +52,41 @@ export default function ScanPage() {
   const [isLoading, setIsLoading]           = useState(false)
   const [prediction, setPrediction]         = useState<PredictionResult|null>(null)
   const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [saving, setSaving]                 = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
 
   // --- get location once ---
   useEffect(() => {
-    if (!location && !locError && navigator.geolocation) {
+    let watchId: number;
+    
+    if (navigator.geolocation) {
+      // Get initial location
       navigator.geolocation.getCurrentPosition(
         pos => setLocation({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
         err => setLocError(err.message),
         { enableHighAccuracy: true }
-      )
+      );
+      
+      // Watch for location changes
+      watchId = navigator.geolocation.watchPosition(
+        pos => {
+          const newLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          setLocation(newLocation);
+          // Optionally notify user of location change
+          toast({ title: "Location updated", description: "Using current location" });
+        },
+        err => setLocError(err.message),
+        { enableHighAccuracy: true, maximumAge: 300000 } // 5 minutes cache
+      );
     }
-  }, [location, locError])
-
+    
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+    };
+  }, []);
+  
   useEffect(() => {
     if (selectedImage) {
       // only runs in the browser, after hydration
@@ -99,43 +119,45 @@ export default function ScanPage() {
 
     setIsLoading(true)
     try {
-      const form = new FormData()
-      form.append("image", selectedFile)
-      form.append("latitude",  location.lat.toString())
-      form.append("longitude", location.lon.toString())
-      form.append("storageType", storageType)
+      const form = new FormData();
+      form.append("image", selectedFile!);
+      form.append("latitude", location!.lat.toString());
+      form.append("longitude", location!.lon.toString());
+      form.append("storageType", storageType);
+      // Send proper ISO string instead of localized string
+      form.append("scanTime", new Date().toISOString());
+      
       if (storageType === "fridge") {
-        form.append("temperature", temperature[0].toString())
-        form.append("humidity",    humidity[0].toString())
+        form.append("temperature", temperature[0].toString());
+        form.append("humidity", humidity[0].toString());
       }
-      const nowIso = new Date().toISOString()
-      form.append("scanTime", nowIso)
 
       // note: this endpoint ONLY predicts, does not save
       const resp = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/inventory`,  // <-- assume /predict returns GPT result only
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/predict`, // Changed from NEXT_PUBLIC_API_URL
         form,
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "multipart/form-data"
-          }
+            "Content-Type": "multipart/form-data",
+          },
         }
-      )
+      );
+
       const data: PredictionResult = resp.data
-      data.scanTime = new Date(data.scanTime || nowIso).toLocaleString()
+      data.scanTime = new Date(data.scanTime || new Date().toISOString()).toLocaleString()
       setPrediction(data)
 
       toast({
         title: "Prediction complete",
         description: `Expires in ${data.spoilageDays} days.`,
       })
-    } catch (err: any) {
+    } catch (error: any) {
       // special InvalidImage error from backend
-      if (err.response?.status === 400 && err.response.data.error === "InvalidImage") {
+      if (error.response?.status === 400 && error.response.data.error === "InvalidImage") {
         toast({
           title: "Invalid image",
-          description: err.response.data.suggestion || err.response.data.message,
+          description: error.response.data.suggestion || error.response.data.message,
           variant: "destructive",
         })
         // reset to let user pick again
@@ -143,10 +165,10 @@ export default function ScanPage() {
         setSelectedFile(null)
         fileInputRef.current!.value = ""
       } else {
-        console.error(err)
+        console.error(error)
         toast({
           title: "Prediction failed",
-          description: err.response?.data?.error || err.message || "Please try a different image.",
+          description: error.response?.data?.error || error.message || "Please try a different image.",
           variant: "destructive",
         })
       }
@@ -157,35 +179,31 @@ export default function ScanPage() {
 
   // --- save to inventory (actually persists) ---
   const handleSaveToInventory = async () => {
-    if (!prediction) {
-      return toast({ title: "No prediction", description: "Run a prediction first.", variant: "destructive" })
-    }
+    if (!prediction) return
+    
+    setSaving(true)
     try {
-      // reuse formData or build new
-      const form = new FormData()
-      form.append("imageUrl", prediction.imageUrl)
-      form.append("latitude",  location!.lat.toString())
-      form.append("longitude", location!.lon.toString())
-      form.append("storageType", prediction.storageType)
-      if (prediction.storageType === "fridge") {
-        form.append("temperature", prediction.temperature!.toString())
-        form.append("humidity",    prediction.humidity!.toString())
-      }
-      form.append("scanTime", new Date(prediction.scanTime).toISOString())
-
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_URL}/inventory`,
-        form,
-        { headers: { Authorization: `Bearer ${token}` } }
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory`, // Changed from NEXT_PUBLIC_API_URL
+        prediction, // Send as JSON
+        { 
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          } 
+        }
       )
-      setShowSaveDialog(true)
-    } catch (err: any) {
-      console.error(err)
+      
+      setShowSaveDialog(true);
+    } catch (error: any) {
+      console.error(error)
       toast({
         title: "Save failed",
         description: "Could not save to inventory. Please try again.",
         variant: "destructive",
       })
+    } finally {
+      setSaving(false)
     }
   }
 
