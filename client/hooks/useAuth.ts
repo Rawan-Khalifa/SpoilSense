@@ -51,7 +51,7 @@ export function useAuth() {
 
   // just a normal logout (keep account)
   const logout = async () => {
-    await signOut(auth);
+    await auth.signOut();
     setUser(null);
     setToken(null);
   };
