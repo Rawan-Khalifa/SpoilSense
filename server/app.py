@@ -359,6 +359,22 @@ def test_weather():
             "coordinates": {"lat": lat, "lon": lon}
         }), 500
 
+# Add this route after your imports and before other routes
+@app.route("/", methods=["GET"])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        "status": "SpoilSense API is running",
+        "version": "1.0",
+        "endpoints": [
+            "/auth/login",
+            "/auth/delete", 
+            "/predict",
+            "/inventory",
+            "/test/weather"
+        ]
+    }), 200
+
 # ─── Run Flask server ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
