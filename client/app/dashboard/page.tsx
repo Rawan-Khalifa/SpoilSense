@@ -17,6 +17,28 @@ import axios        from "axios"
 import Loading      from "@/app/inventory/loading"
 import { useToast } from "@/hooks/use-toast"
 
+async function getCurrentLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      resolve({ latitude: 0, longitude: 0 }); // fallback
+      return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        });
+      },
+      (error) => {
+        console.warn("Geolocation failed:", error);
+        resolve({ latitude: 0, longitude: 0 }); // fallback
+      }
+    );
+  });
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { user, token, loading: authLoading } = useAuth()
