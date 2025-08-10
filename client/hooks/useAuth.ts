@@ -18,7 +18,7 @@ export function useAuth() {
         setToken(idToken);
         // upsert on every sign-in
         await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/auth/login`,
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/login`,
           {},
           { headers: { Authorization: `Bearer ${idToken}` } }
         );
