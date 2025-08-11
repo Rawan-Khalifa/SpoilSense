@@ -1,5 +1,8 @@
 'use client'
 
+import { useAuth } from "@/hooks/useAuth"
+import { useToast } from "@/hooks/use-toast"
+import Loading from "@/app/inventory/loading"
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,6 +18,8 @@ import Image from 'next/image'
 import { analyzeGroceriesImage, type RecipeAnalysisResult } from '../actions/recipe-actions'
 
 export default function RecipeSuggestions() {
+  const { user, token, loading: authLoading } = useAuth()
+  const { toast } = useToast()
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -41,7 +46,11 @@ export default function RecipeSuggestions() {
     try {
       const formData = new FormData()
       formData.append('image', selectedImage)
-      
+      if (!token) {
+        toast({ title: "Not signed in", description: "Please log in again.", variant: "destructive" })
+        return
+      } // quick auth check 
+
       const result = await analyzeGroceriesImage(formData)
       setResults(result)
     } catch (error) {
@@ -54,6 +63,15 @@ export default function RecipeSuggestions() {
     } finally {
       setIsAnalyzing(false)
     }
+  }
+
+  // Block render until auth is known
+  if (authLoading) return <Loading />
+
+  // If not logged in, send to login and stop rendering
+  if (!user) {
+    router.push("/login")
+    return null
   }
 
   return (
