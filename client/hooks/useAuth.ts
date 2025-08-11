@@ -18,7 +18,7 @@ export function useAuth() {
         setToken(idToken);
         // upsert on every sign-in
         await axios.post(
-          `${process.env.NEXT_PUBLIC_API_URL}/auth/login`,
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/login`,
           {},
           { headers: { Authorization: `Bearer ${idToken}` } }
         );
@@ -34,9 +34,9 @@ export function useAuth() {
   const deleteAccount = async () => {
     if (!token) return;
     try {
-      // 1) call your new delete endpoint
+      // 1) delete from backend
       await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_URL}/auth/delete`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/delete`, // Changed from NEXT_PUBLIC_API_URL
         { headers: { Authorization: `Bearer ${token}` } }
       );
     } catch (err) {
@@ -51,7 +51,7 @@ export function useAuth() {
 
   // just a normal logout (keep account)
   const logout = async () => {
-    await signOut(auth);
+    await auth.signOut();
     setUser(null);
     setToken(null);
   };

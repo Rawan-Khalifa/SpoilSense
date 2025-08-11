@@ -17,6 +17,28 @@ import axios        from "axios"
 import Loading      from "@/app/inventory/loading"
 import { useToast } from "@/hooks/use-toast"
 
+async function getCurrentLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      resolve({ latitude: 0, longitude: 0 }); // fallback
+      return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        });
+      },
+      (error) => {
+        console.warn("Geolocation failed:", error);
+        resolve({ latitude: 0, longitude: 0 }); // fallback
+      }
+    );
+  });
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const { user, token, loading: authLoading } = useAuth()
@@ -29,12 +51,30 @@ export default function DashboardPage() {
 
   // Fetch inventory and compute stats
   useEffect(() => {
-    if (!authLoading && user && token) {
-      axios.get(`${process.env.NEXT_PUBLIC_API_URL}/inventory`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      .then(res => {
-        const inv: any[] = res.data
+    const loginUser = async () => {
+      if (!user || !token) return
+      
+      try {
+        const location = await getCurrentLocation()
+        await axios.post(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/login`, // Changed from NEXT_PUBLIC_API_URL
+          location,
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+      } catch (error) {
+        console.error("Backend login failed:", error)
+      }
+    }
+
+    const fetchInventory = async () => {
+      if (!token) return
+      try {
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory`, // Changed from NEXT_PUBLIC_API_URL
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        
+        const inv: any[] = response.data
         setItemsScanned(inv.length)
         // sum up estimatedPrice
         const totalSaved = inv.reduce((sum, i) => sum + (i.estimatedPrice || 0), 0)
@@ -42,14 +82,18 @@ export default function DashboardPage() {
         // count expiring within 1 day
         const soon = inv.filter(i => i.status === "expiring").length
         setExpiringSoon(soon)
-      })
-      .catch(err => {
-        console.error(err)
-        toast({ title: "Could not load dashboard stats", variant: "destructive" })
-      })
-      .finally(() => setStatsLoading(false))
+      } catch (error) {
+        console.error("Failed to fetch inventory:", error)
+      } finally {
+        setStatsLoading(false)
+      }
     }
-  }, [authLoading, user, token, toast])
+
+    if (!authLoading && user && token) {
+      loginUser()
+      fetchInventory()
+    }
+  }, [authLoading, user, token])
 
   const { logout, deleteAccount } = useAuth();
 

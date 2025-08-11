@@ -60,7 +60,7 @@ export default function LandingPage() {
           <div className="mt-12">
             <Image
               src="/LandingPage_image.png"
-              alt="SpoilSensei Dashboard"
+              alt="SpoilSense Dashboard"
               width={600}
               height={400}
               className="mx-auto rounded-lg shadow-2xl"

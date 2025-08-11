@@ -8,7 +8,7 @@ import { Toaster } from "@/components/ui/toaster"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "SpoilSensei - Smart Food Spoilage Prediction",
+  title: "SpoilSense - Smart Food Spoilage Prediction",
   description: "Predict food spoilage before it spoils your business",
     generator: 'v0.dev'
 }
