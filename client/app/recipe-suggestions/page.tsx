@@ -57,27 +57,16 @@ export default function RecipeSuggestions() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 to-red-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/dashboard">
-            <Button variant="outline" size="sm">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Dashboard
-            </Button>
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+        <header className="bg-white border-b p-4 flex justify-between items-center">
+          <Link href="/dashboard" className="flex items-center text-gray-600 hover:text-gray-900">
+            <ArrowLeft className="w-5 h-5 mr-2" /> Dashboard
           </Link>
-          <div>
-            <h1 className="text-4xl font-bold text-gray-900 flex items-center gap-3">
-              <ChefHat className="w-10 h-10 text-orange-600" />
-              Recipe Suggestions
-            </h1>
-            <p className="text-xl text-gray-600 mt-2">
-              Upload photos of your groceries and get AI-powered recipe suggestions
-            </p>
-          </div>
-        </div>
+          <h1 className="text-xl font-bold">Recipe Suggestions</h1>
+        </header>
 
+      <div className="max-w-7xl mx-auto p-4 space-y-6">
         <div className="grid lg:grid-cols-2 gap-8">
           {/* Upload Section */}
           <div className="space-y-6">
