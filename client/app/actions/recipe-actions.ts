@@ -71,11 +71,23 @@ export async function analyzeGroceriesImage(formData: FormData): Promise<RecipeA
     })
 
     const openaiData = await openaiResponse.json()
+
+    if (!openaiResponse.ok || !openaiData.choices || !openaiData.choices[0]?.message?.content) {
+      console.error('OpenAI API returned an unexpected response:', openaiData)
+      return {
+        groceries: [],
+        recipes: [],
+        success: false,
+        error: 'Failed to extract grocery items from the image'
+      }
+    }
+
     const groceryItems = openaiData.choices[0].message.content
       .trim()
       .split('\n')
       .map((item: string) => ({ name: item.replace(/^[-•]\s*/, '').trim() }))
       .filter((item: DetectedGrocery) => item.name)
+
 
     // Step 2: Get recipe suggestions
     const recipeResponse = await fetch('https://api.openai.com/v1/chat/completions', {
