@@ -256,6 +256,38 @@ export default function DashboardPage() {
               </CardContent>
             </Link>
           </Card>
+
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+            <Link href="/recipe-suggestions">
+              <CardHeader>
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Package className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl">Recipe Suggestions</CardTitle>
+                    <CardDescription>Make the most of your ingredients</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex items-center text-sm text-gray-600">
+                    <span className="w-2 h-2 bg-orange-500 rounded-full mr-2" /> Upload photos of your groceries
+                  </div>
+                  <div className="flex items-center text-sm text-gray-600">
+                    <span className="w-2 h-2 bg-red-500 rounded-full mr-2" /> Get AI-powered recipe suggestions
+                  </div>
+                  <div className="flex items-center text-sm text-gray-600">
+                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2" /> Go to recipe links
+                  </div>
+                </div>
+                <Button variant="outline" className="w-full mt-4 bg-transparent">
+                  Get Recipes
+                </Button>
+              </CardContent>
+            </Link>
+          </Card>
         </div>
 
         {/* How It Works */}
