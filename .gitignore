@@ -18,5 +18,5 @@ server/firebase-service-account.json
 .env.local
 
 .DS_Store
-client/.vercel
+.vercel
 client/.DS_Store
