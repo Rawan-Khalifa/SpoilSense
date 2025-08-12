@@ -12,6 +12,7 @@ server/__pycache__/
 
 # dotenv & service‐account
 *.env
+server/.env
 server/firebase-service-account.json
 
 # environment variables
