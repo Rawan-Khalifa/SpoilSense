@@ -70,7 +70,7 @@ export default function LoginPage() {
           <CardContent className="space-y-4">
             <Button
               onClick={handleGoogleSignIn}
-              disabled={isSigningIn || loading}
+              disabled={isSigningIn}
               className="w-full"
               size="lg"
             >
