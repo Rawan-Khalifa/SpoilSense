@@ -9,8 +9,7 @@ const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "SpoilSense - Smart Food Spoilage Prediction",
-  description: "Predict food spoilage before it spoils your business",
-    generator: 'v0.dev'
+  description: "Predict food spoilage before it spoils your business"
 }
 
 export default function RootLayout({
