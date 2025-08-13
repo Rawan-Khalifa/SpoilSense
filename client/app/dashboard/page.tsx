@@ -51,21 +51,6 @@ export default function DashboardPage() {
 
   // Fetch inventory and compute stats
   useEffect(() => {
-    const loginUser = async () => {
-      if (!user || !token) return
-      
-      try {
-        const location = await getCurrentLocation()
-        await axios.post(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/login`, // Changed from NEXT_PUBLIC_API_URL
-          location,
-          { headers: { Authorization: `Bearer ${token}` } }
-        )
-      } catch (error) {
-        console.error("Backend login failed:", error)
-      }
-    }
-
     const fetchInventory = async () => {
       if (!token) return
       try {
@@ -90,7 +75,7 @@ export default function DashboardPage() {
     }
 
     if (!authLoading && user && token) {
-      loginUser()
+      // Only call fetchInventory, not loginUser
       fetchInventory()
     }
   }, [authLoading, user, token])
