@@ -12,6 +12,7 @@ server/__pycache__/
 
 # dotenv & service‐account
 *.env
+server/.env
 server/firebase-service-account.json
 
 # environment variables
@@ -20,3 +21,4 @@ server/firebase-service-account.json
 .DS_Store
 
 .vercel
+client/.DS_Store

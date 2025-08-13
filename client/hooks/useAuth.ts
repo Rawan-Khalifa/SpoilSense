@@ -10,25 +10,45 @@ export function useAuth() {
   const [token,   setToken]   = useState<string|null>(null);
   const [loading, setLoading] = useState(true);
 
+
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      if (u) {
-        const idToken = await u.getIdToken();
-        setToken(idToken);
-        // upsert on every sign-in
-        await axios.post(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/login`,
-          {},
-          { headers: { Authorization: `Bearer ${idToken}` } }
-        );
-      } else {
+  // Important: this whole block must never throw without clearing loading
+  const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      try {
+        setUser(u ?? null);
+        if (u) {
+          const idToken = await u.getIdToken();
+          setToken(idToken);
+
+          // upsert on every sign-in
+          await axios.post(
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/login`,
+            {},
+            { headers: { Authorization: `Bearer ${idToken}` } }
+          );
+        } else {
+          setToken(null);
+        }
+      } catch (err) {
+        console.error("[Auth] onAuthStateChanged handler error:", err);
+        // make sure we don’t leave a stale token on errors
         setToken(null);
+      } finally {
+        // exactly once per callback invocation
+        setLoading(false);
       }
+    },
+    (err) => {
+      // <-- this handles listener errors (e.g., bad config/env)
+      console.error("[Auth] onAuthStateChanged listener error:", err);
+      setUser(null);
+      setToken(null);
       setLoading(false);
-    });
-    return () => unsub();
-  }, []);
+    }
+  );
+
+  return () => unsubscribe();
+}, []);
 
   // signs out locally + tells your backend to delete auth record
   const deleteAccount = async () => {
