@@ -12,29 +12,40 @@ export function useAuth() {
 
 
   useEffect(() => {
+  console.log("🔄 Setting up auth listener...");
   // Important: this whole block must never throw without clearing loading
   const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      console.log("👤 Auth state changed:", u ? u.email : "No user");
+      
       try {
         setUser(u ?? null);
         if (u) {
           const idToken = await u.getIdToken();
+          console.log("🎫 Got token:", idToken.substring(0, 20) + "...");
           setToken(idToken);
 
-          // upsert on every sign-in
+          // Test backend login - THIS IS WHERE THE 502 ERROR HAPPENS
+          console.log("🔄 Testing backend login...");
           await axios.post(
             `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/login`,
-            {},
-            { headers: { Authorization: `Bearer ${idToken}` } }
+            { latitude: 0, longitude: 0 }, // Default values for test
+            { 
+              headers: { 
+                Authorization: `Bearer ${idToken}`,
+                "Content-Type": "application/json"
+              } 
+            }
           );
+          console.log("✅ Backend login successful");
+          
         } else {
           setToken(null);
         }
-      } catch (err) {
-        console.error("[Auth] onAuthStateChanged handler error:", err);
-        // make sure we don’t leave a stale token on errors
-        setToken(null);
+      } catch (err: any) {
+        console.error("❌ Auth error:", err);
+        console.error("Error details:", err.response?.data);
+        // Don't clear token on backend error - allow frontend to work
       } finally {
-        // exactly once per callback invocation
         setLoading(false);
       }
     },
