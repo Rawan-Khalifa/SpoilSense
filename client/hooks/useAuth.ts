@@ -24,19 +24,6 @@ export function useAuth() {
           console.log("🎫 Got token:", idToken.substring(0, 20) + "...");
           setToken(idToken);
 
-          // Test backend login - THIS IS WHERE THE 502 ERROR HAPPENS
-          console.log("🔄 Testing backend login...");
-          await axios.post(
-            `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/login`,
-            { latitude: 0, longitude: 0 }, // Default values for test
-            { 
-              headers: { 
-                Authorization: `Bearer ${idToken}`,
-                "Content-Type": "application/json"
-              } 
-            }
-          );
-          console.log("✅ Backend login successful");
           
         } else {
           setToken(null);
