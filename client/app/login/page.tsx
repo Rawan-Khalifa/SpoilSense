@@ -13,6 +13,29 @@ import { signInWithPopup }     from "firebase/auth";
 import { useAuth }             from "@/hooks/useAuth";
 import Image from "next/image";
 
+async function getCurrentLocation(): Promise<{lat: number, lon: number}> {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve({ lat: 40.7128, lon: -74.0060 }); // NYC fallback
+      return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lat: position.coords.latitude,
+          lon: position.coords.longitude
+        });
+      },
+      (error) => {
+        console.warn("Geolocation failed:", error);
+        resolve({ lat: 40.7128, lon: -74.0060 }); // NYC fallback
+      },
+      { timeout: 10000, enableHighAccuracy: false }
+    );
+  });
+}
+
 export default function LoginPage() {
   const { user, loading } = useAuth();
   const [isSigningIn, setSigningIn] = useState(false);

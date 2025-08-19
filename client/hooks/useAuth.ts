@@ -24,19 +24,6 @@ export function useAuth() {
           console.log("🎫 Got token:", idToken.substring(0, 20) + "...");
           setToken(idToken);
 
-          // Test backend login - THIS IS WHERE THE 502 ERROR HAPPENS
-          console.log("🔄 Testing backend login...");
-          await axios.post(
-            `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/login`,
-            { latitude: 0, longitude: 0 }, // Default values for test
-            { 
-              headers: { 
-                Authorization: `Bearer ${idToken}`,
-                "Content-Type": "application/json"
-              } 
-            }
-          );
-          console.log("✅ Backend login successful");
           
         } else {
           setToken(null);
@@ -60,6 +47,22 @@ export function useAuth() {
 
   return () => unsubscribe();
 }, []);
+
+  // In useAuth hook, add token refresh:
+  useEffect(() => {
+    if (user) {
+      const refreshToken = setInterval(async () => {
+        try {
+          const freshToken = await user.getIdToken(true);
+          setToken(freshToken);
+        } catch (error) {
+          console.error("Token refresh failed:", error);
+        }
+      }, 50 * 60 * 1000); // Refresh every 50 minutes
+
+      return () => clearInterval(refreshToken);
+    }
+  }, [user]);
 
   // signs out locally + tells your backend to delete auth record
   const deleteAccount = async () => {

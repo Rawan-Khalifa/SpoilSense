@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import traceback
 import tempfile
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 from firebase_admin import auth as admin_auth, credentials, initialize_app, firestore, storage
 from werkzeug.utils import secure_filename
@@ -24,7 +24,20 @@ bucket = storage.bucket()
 
 # ─── Flask application setup ─────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app, origins=["https://spoil-sense.vercel.app", "http://localhost:3000"])
+CORS(app, origins=[
+    "https://spoil-sense.vercel.app",
+    "http://localhost:3000",
+    "https://*.vercel.app"  # Allow all Vercel preview deployments
+])
+
+@app.before_request
+def handle_preflight():
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        response.headers.add('Access-Control-Allow-Headers', "*")
+        response.headers.add('Access-Control-Allow-Methods', "*")
+        return response
 
 # ─── Decorator to verify Firebase ID token ────────────────────────────────────
 def login_required(f):
