@@ -13,8 +13,9 @@ export function useAuth() {
 
   useEffect(() => {
   console.log("🔄 Setting up auth listener...");
-  // Important: this whole block must never throw without clearing loading
-  const unsubscribe = onAuthStateChanged(auth, async (u) => {
+  
+  const unsubscribe = onAuthStateChanged(auth, 
+    async (u) => {
       console.log("👤 Auth state changed:", u ? u.email : "No user");
       
       try {
@@ -23,26 +24,15 @@ export function useAuth() {
           const idToken = await u.getIdToken();
           console.log("🎫 Got token:", idToken.substring(0, 20) + "...");
           setToken(idToken);
-
-          
         } else {
           setToken(null);
         }
       } catch (err: any) {
         console.error("❌ Auth error:", err);
-        console.error("Error details:", err.response?.data);
-        // Don't clear token on backend error - allow frontend to work
       } finally {
         setLoading(false);
       }
     },
-    (err) => {
-      // <-- this handles listener errors (e.g., bad config/env)
-      console.error("[Auth] onAuthStateChanged listener error:", err);
-      setUser(null);
-      setToken(null);
-      setLoading(false);
-    }
   );
 
   return () => unsubscribe();

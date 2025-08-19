@@ -29,9 +29,9 @@ bucket = storage.bucket()
 app = Flask(__name__)
 CORS(app, origins=[
     "https://spoil-sense.vercel.app",
-    "http://localhost:3000",
-    "https://*.vercel.app"  # Allow all Vercel preview deployments
-])
+    "https://*.vercel.app",  # All Vercel preview deployments
+    "http://localhost:3000"
+], supports_credentials=True)
 
 @app.before_request
 def handle_preflight():
