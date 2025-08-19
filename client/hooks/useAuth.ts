@@ -48,6 +48,22 @@ export function useAuth() {
   return () => unsubscribe();
 }, []);
 
+  // In useAuth hook, add token refresh:
+  useEffect(() => {
+    if (user) {
+      const refreshToken = setInterval(async () => {
+        try {
+          const freshToken = await user.getIdToken(true);
+          setToken(freshToken);
+        } catch (error) {
+          console.error("Token refresh failed:", error);
+        }
+      }, 50 * 60 * 1000); // Refresh every 50 minutes
+
+      return () => clearInterval(refreshToken);
+    }
+  }, [user]);
+
   // signs out locally + tells your backend to delete auth record
   const deleteAccount = async () => {
     if (!token) return;
