@@ -1,10 +1,7 @@
-import os
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import firestore
 
-# initialize the Admin SDK once
-cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
-firebase_admin.initialize_app(cred)
+# Use the already initialized Firebase app
 db = firestore.client()
 
 def upsert_user(uid: str, email: str, name: str):
@@ -14,6 +11,6 @@ def upsert_user(uid: str, email: str, name: str):
     doc = db.collection("users").document(uid)
     doc.set({
         "email": email,
-        "name":  name,
+        "name": name,
         "updatedAt": firestore.SERVER_TIMESTAMP
     }, merge=True)
