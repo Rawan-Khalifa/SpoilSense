@@ -8,27 +8,30 @@ import tempfile
 
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
-from firebase_admin import auth as admin_auth, credentials, initialize_app, firestore, storage
-from werkzeug.utils import secure_filename
-from dotenv import load_dotenv
+import firebase_admin
+from firebase_admin import auth as admin_auth, credentials, storage
 
-# ─── Load environment variables ───────────────────────────────────────────────
-load_dotenv()
-GOOGLE_CREDS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-cred = credentials.Certificate(GOOGLE_CREDS)
-initialize_app(cred, {
-    'storageBucket': 'spoilsense-9d6d0.firebasestorage.app'
-})
-db = firestore.client()
+# ─── Initialize Firebase only once ─────────────────────────────────────────────
+if not firebase_admin._apps:
+    GOOGLE_CREDS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    if not GOOGLE_CREDS:
+        raise ValueError("Missing GOOGLE_APPLICATION_CREDENTIALS environment variable")
+    
+    cred = credentials.Certificate(GOOGLE_CREDS)
+    firebase_admin.initialize_app(cred, {
+        'storageBucket': os.getenv('FIREBASE_STORAGE_BUCKET', 'spoilsense-9d6d0.firebasestorage.app')
+    })
+
+# Get Firebase services
 bucket = storage.bucket()
 
 # ─── Flask application setup ─────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app, origins=[
     "https://spoil-sense.vercel.app",
-    "http://localhost:3000",
-    "https://*.vercel.app"  # Allow all Vercel preview deployments
-])
+    "https://*.vercel.app",  # All Vercel preview deployments
+    "http://localhost:3000"
+], supports_credentials=True)
 
 @app.before_request
 def handle_preflight():
