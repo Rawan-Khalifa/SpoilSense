@@ -24,7 +24,11 @@ bucket = storage.bucket()
 
 # ─── Flask application setup ─────────────────────────────────────────────────
 app = Flask(__name__)
-CORS(app, origins=["https://spoil-sense.vercel.app", "http://localhost:3000"])
+CORS(app, origins=[
+    "https://spoil-sense.vercel.app",
+    "http://localhost:3000",
+    "https://*.vercel.app"  # Allow all Vercel preview deployments
+])
 
 # ─── Decorator to verify Firebase ID token ────────────────────────────────────
 def login_required(f):
