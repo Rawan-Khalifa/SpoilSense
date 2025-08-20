@@ -1,15 +1,17 @@
 import firebase_admin
 from firebase_admin import firestore
 
-# Use the existing Firebase app instead of creating a new one
+# Use existing Firebase app to avoid conflicts
 try:
-    app = firebase_admin.get_app()
+    db = firestore.client()
 except ValueError:
-    # This means no app exists, so we need to create one
-    # But since app.py should initialize it, this shouldn't happen
-    raise ValueError("Firebase not initialized. Make sure app.py initializes Firebase first.")
-
-db = firestore.client(app)
+    # Fallback if no app is initialized
+    from firebase_admin import credentials
+    import os
+    
+    cred = credentials.Certificate(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
 
 def upsert_user(uid: str, email: str, name: str):
     """
@@ -18,6 +20,6 @@ def upsert_user(uid: str, email: str, name: str):
     doc = db.collection("users").document(uid)
     doc.set({
         "email": email,
-        "name":  name,
+        "name": name,
         "updatedAt": firestore.SERVER_TIMESTAMP
     }, merge=True)
