@@ -10,6 +10,9 @@ from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import firebase_admin
 from firebase_admin import auth as admin_auth, credentials, storage
+from werkzeug.utils import secure_filename
+
+from models import db  
 
 # ─── Initialize Firebase only once ─────────────────────────────────────────────
 if not firebase_admin._apps:
