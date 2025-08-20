@@ -9,7 +9,7 @@ import tempfile
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import firebase_admin
-from firebase_admin import auth as admin_auth, credentials, storage
+from firebase_admin import credentials, auth as admin_auth, storage
 from werkzeug.utils import secure_filename
 
 from models import db  
@@ -17,16 +17,19 @@ from models import db
 # ─── Initialize Firebase only once ─────────────────────────────────────────────
 if not firebase_admin._apps:
     GOOGLE_CREDS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
+    
     if not GOOGLE_CREDS:
         raise ValueError("Missing GOOGLE_APPLICATION_CREDENTIALS environment variable")
     
     cred = credentials.Certificate(GOOGLE_CREDS)
     firebase_admin.initialize_app(cred, {
-        'storageBucket': os.getenv('FIREBASE_STORAGE_BUCKET', 'spoilsense-9d6d0.firebasestorage.app')
+        'storageBucket': STORAGE_BUCKET
     })
 
-# Get Firebase services
-bucket = storage.bucket()
+# Get Firebase services with explicit bucket name
+STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
+bucket = storage.bucket(STORAGE_BUCKET)
 
 # ─── Flask application setup ─────────────────────────────────────────────────
 app = Flask(__name__)
