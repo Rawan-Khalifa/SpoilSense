@@ -35,7 +35,7 @@ function DashboardContent() {
     wastePrevented: 0,
     expiringSoon: 0
   })
-  const [statsLoading, setStatsLoading] = useState(true)
+  const [statsLoading, setStatsLoading] = useState(false) // Changed to false - don't block UI
 
   // Fetch inventory and compute stats
   useEffect(() => {
@@ -51,12 +51,12 @@ function DashboardContent() {
           token,
           () => {
             // Handle auth error
-            toast({
-              title: "Session expired",
-              description: "Please log in again",
-              variant: "destructive"
+            console.log("Auth error - setting default stats")
+            setStats({
+              itemsScanned: 0,
+              wastePrevented: 0,
+              expiringSoon: 0
             })
-            router.push("/login")
           }
         )
         
@@ -78,7 +78,12 @@ function DashboardContent() {
         })
       } catch (error) {
         console.error("Failed to fetch inventory:", error)
-        handleApiError(error, "Failed to load dashboard data")
+        // Don't show error toast, just set default values
+        setStats({
+          itemsScanned: 0,
+          wastePrevented: 0,
+          expiringSoon: 0
+        })
       } finally {
         setStatsLoading(false)
       }
