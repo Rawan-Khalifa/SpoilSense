@@ -5,6 +5,8 @@ import { useAuth }            from "@/hooks/useAuth"
 import axios                  from "axios"
 import Loading                from "./loading"
 import { useToast }           from "@/hooks/use-toast"
+import { AuthGuard }          from "@/components/auth-guard"
+import { makeAuthenticatedRequest, handleApiError } from "@/lib/api-client"
 import {
   Card, CardHeader, CardTitle, CardContent
 } from "@/components/ui/card"
@@ -33,7 +35,7 @@ interface InventoryItem {
   status: Exclude<Status,"all">
 }
 
-export default function InventoryPage() {
+function InventoryPageContent() {
   const { user, token, loading: authLoading } = useAuth()
   const { toast } = useToast()
   const [inventory, setInventory]       = useState<InventoryItem[]>([])
@@ -48,7 +50,7 @@ export default function InventoryPage() {
     const fetchInventory = async () => {
       try {
         const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory`, // Changed from NEXT_PUBLIC_API_URL
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory`,
           { headers: { Authorization: `Bearer ${token}` } }
         )
         
@@ -94,7 +96,7 @@ export default function InventoryPage() {
     if (!confirm("Remove this item?")) return
     try {
       await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory/${id}`, // Changed from NEXT_PUBLIC_API_URL
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory/${id}`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
       setInventory(inv => inv.filter(i => i.id !== id))
@@ -233,5 +235,14 @@ export default function InventoryPage() {
         </div>
       )}
     </div>
+  )
+}
+
+// Wrap with AuthGuard
+export default function InventoryPage() {
+  return (
+    <AuthGuard>
+      <InventoryPageContent />
+    </AuthGuard>
   )
 }

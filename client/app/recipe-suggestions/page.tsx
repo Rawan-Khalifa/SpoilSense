@@ -3,6 +3,7 @@
 import { useAuth } from "@/hooks/useAuth"
 import { useToast } from "@/hooks/use-toast"
 import Loading from "@/app/inventory/loading"
+import { AuthGuard } from "@/components/auth-guard"
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,7 +18,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { analyzeGroceriesImage, type RecipeAnalysisResult } from '../actions/recipe-actions'
 
-export default function RecipeSuggestions() {
+function RecipeSuggestionsContent() {
   const { user, token, loading: authLoading } = useAuth()
   const { toast } = useToast()
   const [selectedImage, setSelectedImage] = useState<File | null>(null)
@@ -67,12 +68,6 @@ export default function RecipeSuggestions() {
 
   // Block render until auth is known
   if (authLoading) return <Loading />
-
-  // If not logged in, send to login and stop rendering
-  if (!user) {
-    router.push("/login")
-    return null
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -241,5 +236,14 @@ export default function RecipeSuggestions() {
         </div>
       </div>
     </div>
+  )
+}
+
+// Wrap with AuthGuard
+export default function RecipeSuggestions() {
+  return (
+    <AuthGuard>
+      <RecipeSuggestionsContent />
+    </AuthGuard>
   )
 }
