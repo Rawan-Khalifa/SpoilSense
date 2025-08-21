@@ -5,6 +5,8 @@ import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/useAuth"
 import axios from "axios"
+import { AuthGuard } from "@/components/auth-guard"
+import { makeAuthenticatedRequest, handleApiError } from "@/lib/api-client"
 import { Button } from "@/components/ui/button"
 import {
   Card, CardHeader, CardTitle, CardDescription, CardContent
@@ -34,7 +36,7 @@ interface PredictionResult {
   scanTime: string
 }
 
-export default function ScanPage() {
+function ScanPageContent() {
   const { user, token, loading: authLoading } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
@@ -134,7 +136,7 @@ export default function ScanPage() {
 
       // note: this endpoint ONLY predicts, does not save
       const resp = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/predict`, // Changed from NEXT_PUBLIC_API_URL
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/predict`,
         form,
         {
           headers: {
@@ -184,7 +186,7 @@ export default function ScanPage() {
     setSaving(true)
     try {
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory`, // Changed from NEXT_PUBLIC_API_URL
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory`,
         prediction, // Send as JSON
         { 
           headers: { 
@@ -218,11 +220,6 @@ export default function ScanPage() {
   handleRetake()
   toast({ title: "Scan deleted", description: "You can start over." })
 }
-
-  // redirect if not logged in
-  useEffect(() => {
-    if (!authLoading && !user) router.push("/login")
-  }, [authLoading, user])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -280,7 +277,10 @@ export default function ScanPage() {
                     <CardTitle><Thermometer className="w-5 h-5 mr-2" /> Storage Type</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <RadioGroup value={storageType} onValueChange={setStorageType}>
+                    <RadioGroup 
+                      value={storageType} 
+                      onValueChange={(value) => setStorageType(value as "room"|"fridge")}
+                    >
                       <div className="flex items-center space-x-4">
                         <RadioGroupItem value="room" id="room" /><Label htmlFor="room">Room Temperature</Label>
                         <RadioGroupItem value="fridge" id="fridge" /><Label htmlFor="fridge">Refrigerated</Label>
@@ -372,5 +372,14 @@ export default function ScanPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+// Wrap with AuthGuard
+export default function ScanPage() {
+  return (
+    <AuthGuard>
+      <ScanPageContent />
+    </AuthGuard>
   )
 }

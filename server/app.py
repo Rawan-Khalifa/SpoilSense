@@ -5,6 +5,8 @@ from functools import wraps
 from datetime import datetime, timedelta, timezone
 import traceback
 import tempfile
+from collections import defaultdict
+import time
 
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
@@ -31,6 +33,31 @@ if not firebase_admin._apps:
 STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
 bucket = storage.bucket(STORAGE_BUCKET)
 
+# ─── Rate limiting setup ─────────────────────────────────────────────────
+# Simple in-memory rate limiting (use Redis in production)
+request_counts = defaultdict(list)
+RATE_LIMIT_WINDOW = 300  # 5 minutes
+RATE_LIMIT_MAX_REQUESTS = 100  # Max requests per window
+
+def rate_limit_check(identifier: str) -> bool:
+    """Simple rate limiting check"""
+    now = time.time()
+    window_start = now - RATE_LIMIT_WINDOW
+    
+    # Clean old requests
+    request_counts[identifier] = [
+        req_time for req_time in request_counts[identifier] 
+        if req_time > window_start
+    ]
+    
+    # Check if under limit
+    if len(request_counts[identifier]) >= RATE_LIMIT_MAX_REQUESTS:
+        return False
+    
+    # Add current request
+    request_counts[identifier].append(now)
+    return True
+
 # ─── Flask application setup ─────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app, origins=[
@@ -43,24 +70,56 @@ CORS(app, origins=[
 def handle_preflight():
     if request.method == "OPTIONS":
         response = make_response()
-        response.headers.add("Access-Control-Allow-Origin", "*")
-        response.headers.add('Access-Control-Allow-Headers', "*")
-        response.headers.add('Access-Control-Allow-Methods', "*")
+        origin = request.headers.get('Origin')
+        allowed_origins = [
+            "https://spoil-sense.vercel.app",
+            "http://localhost:3000"
+        ]
+        
+        # Check if origin is in allowed list or is a Vercel preview deployment
+        if origin in allowed_origins or (origin and "vercel.app" in origin):
+            response.headers.add("Access-Control-Allow-Origin", origin)
+        
+        response.headers.add('Access-Control-Allow-Headers', "Authorization, Content-Type")
+        response.headers.add('Access-Control-Allow-Methods', "GET, POST, PUT, DELETE, OPTIONS")
+        response.headers.add('Access-Control-Allow-Credentials', "true")
         return response
 
 # ─── Decorator to verify Firebase ID token ────────────────────────────────────
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
+        # Rate limiting check
+        client_ip = request.remote_addr or request.headers.get('X-Forwarded-For', 'unknown')
+        if not rate_limit_check(client_ip):
+            return jsonify({"error": "Rate limit exceeded. Please try again later."}), 429
+        
         auth_header = request.headers.get("Authorization", "")
+        if not auth_header:
+            return jsonify({"error": "Authorization header required"}), 401
+        
         if not auth_header.startswith("Bearer "):
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Invalid authorization header format"}), 401
+            
         token = auth_header.split(" ", 1)[1]
+        if not token:
+            return jsonify({"error": "Token required"}), 401
+        
         try:
             decoded = admin_auth.verify_id_token(token)
             request.uid = decoded.get("uid")
-        except Exception:
-            return jsonify({"error": "Invalid or expired token"}), 401
+            if not request.uid:
+                return jsonify({"error": "Invalid token payload"}), 401
+        except admin_auth.ExpiredIdTokenError:
+            return jsonify({"error": "Token expired"}), 401
+        except admin_auth.RevokedIdTokenError:
+            return jsonify({"error": "Token revoked"}), 401
+        except admin_auth.InvalidIdTokenError:
+            return jsonify({"error": "Invalid token"}), 401
+        except Exception as e:
+            print(f"Token verification error: {e}")
+            return jsonify({"error": "Token verification failed"}), 401
+            
         return f(*args, **kwargs)
     return wrapper
 

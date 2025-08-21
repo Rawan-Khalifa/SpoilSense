@@ -46,25 +46,35 @@ export default function LoginPage() {
   useEffect(() => {
     if (!loading && user) {
       router.push("/dashboard");
-      // Check if this is truly a "new" login vs. auto-login
-      const isNewSession = sessionStorage.getItem('justLoggedIn');
-      if (isNewSession) {
-        toast({ title: `Welcome back, ${user.displayName}` });
-        sessionStorage.removeItem('justLoggedIn');
-      } else {
-        // Silent redirect for auto-login
-      }
+      toast({ title: `Welcome back, ${user.displayName}` });
     }
-  }, [user, loading]);
+  }, [user, loading, router, toast]);
 
   const handleGoogleSignIn = async () => {
     setSigningIn(true);
     try {
       await signInWithPopup(auth, provider);
-      sessionStorage.setItem('justLoggedIn', 'true');
+      toast({ title: "Successfully signed in!" });
     } catch (err: any) {
       console.error(err);
-      toast({ title: "Sign-in failed", description: err.message, variant: "destructive" });
+      let errorMessage = "Sign-in failed";
+      
+      // Handle specific Firebase Auth errors
+      switch (err.code) {
+        case 'auth/cancelled-popup-request':
+          errorMessage = "Sign-in was cancelled";
+          break;
+        case 'auth/popup-blocked':
+          errorMessage = "Pop-up was blocked. Please allow pop-ups and try again.";
+          break;
+        case 'auth/popup-closed-by-user':
+          errorMessage = "Sign-in was cancelled";
+          break;
+        default:
+          errorMessage = err.message || "Sign-in failed";
+      }
+      
+      toast({ title: "Sign-in failed", description: errorMessage, variant: "destructive" });
     } finally {
       setSigningIn(false);
     }

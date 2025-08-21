@@ -13,74 +13,79 @@ import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useAuth }  from "@/hooks/useAuth"
-import axios        from "axios"
 import Loading      from "@/app/inventory/loading"
 import { useToast } from "@/hooks/use-toast"
+import { AuthGuard } from "@/components/auth-guard"
+import { makeAuthenticatedRequest, handleApiError } from "@/lib/api-client"
+import axios from "axios"
 
-async function getCurrentLocation() {
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      resolve({ latitude: 0, longitude: 0 }); // fallback
-      return;
-    }
-    
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        resolve({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        });
-      },
-      (error) => {
-        console.warn("Geolocation failed:", error);
-        resolve({ latitude: 0, longitude: 0 }); // fallback
-      }
-    );
-  });
+interface DashboardStats {
+  itemsScanned: number;
+  wastePrevented: number;
+  expiringSoon: number;
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
   const router = useRouter()
-  const { user, token, loading: authLoading } = useAuth()
+  const { user, token, logout, deleteAccount } = useAuth()
   const { toast } = useToast()
 
-  const [itemsScanned, setItemsScanned]       = useState(0)
-  const [wastePrevented, setWastePrevented]   = useState(0)
-  const [expiringSoon, setExpiringSoon]       = useState(0)
-  const [statsLoading, setStatsLoading]       = useState(true)
+  const [stats, setStats] = useState<DashboardStats>({
+    itemsScanned: 0,
+    wastePrevented: 0,
+    expiringSoon: 0
+  })
+  const [statsLoading, setStatsLoading] = useState(true)
 
   // Fetch inventory and compute stats
   useEffect(() => {
     const fetchInventory = async () => {
       if (!token) return
+      
       try {
-        const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory`, // Changed from NEXT_PUBLIC_API_URL
-          { headers: { Authorization: `Bearer ${token}` } }
+        const inventory = await makeAuthenticatedRequest(
+          (authToken) => axios.get(
+            `${process.env.NEXT_PUBLIC_API_BASE_URL}/inventory`,
+            { headers: { Authorization: `Bearer ${authToken}` } }
+          ),
+          token,
+          () => {
+            // Handle auth error
+            toast({
+              title: "Session expired",
+              description: "Please log in again",
+              variant: "destructive"
+            })
+            router.push("/login")
+          }
         )
         
-        const inv: any[] = response.data
-        setItemsScanned(inv.length)
-        // sum up estimatedPrice
+        const inv: any[] = inventory
         const totalSaved = inv.reduce((sum, i) => sum + (i.estimatedPrice || 0), 0)
-        setWastePrevented(Math.round(totalSaved))
-        // count expiring within 1 day
-        const soon = inv.filter(i => i.status === "expiring").length
-        setExpiringSoon(soon)
+        const expiring = inv.filter(i => {
+          if (!i.predictedDate) return false
+          const predicted = new Date(i.predictedDate)
+          const now = new Date()
+          const msLeft = predicted.getTime() - now.getTime()
+          const daysLeft = Math.ceil(msLeft / (1000*60*60*24))
+          return daysLeft <= 1 && daysLeft >= 0
+        }).length
+
+        setStats({
+          itemsScanned: inv.length,
+          wastePrevented: Math.round(totalSaved),
+          expiringSoon: expiring
+        })
       } catch (error) {
         console.error("Failed to fetch inventory:", error)
+        handleApiError(error, "Failed to load dashboard data")
       } finally {
         setStatsLoading(false)
       }
     }
 
-    if (!authLoading && user && token) {
-      // Only call fetchInventory, not loginUser
-      fetchInventory()
-    }
-  }, [authLoading, user, token])
-
-  const { logout, deleteAccount } = useAuth();
+    fetchInventory()
+  }, [token, toast, router])
 
   // simple logout
   const onLogout = async () => {
@@ -96,8 +101,7 @@ export default function DashboardPage() {
     }
   };
 
-
-  if (authLoading || statsLoading) {
+  if (statsLoading) {
     return <Loading />
   }
 
@@ -148,7 +152,7 @@ export default function DashboardPage() {
               <Scan className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{itemsScanned}</div>
+              <div className="text-2xl font-bold">{stats.itemsScanned}</div>
               <p className="text-xs text-muted-foreground">total so far</p>
             </CardContent>
           </Card>
@@ -160,7 +164,7 @@ export default function DashboardPage() {
               <Leaf className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">${wastePrevented}</div>
+              <div className="text-2xl font-bold">${stats.wastePrevented}</div>
               <p className="text-xs text-muted-foreground">estimated saved</p>
             </CardContent>
           </Card>
@@ -172,7 +176,7 @@ export default function DashboardPage() {
               <Clock className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{expiringSoon}</div>
+              <div className="text-2xl font-bold">{stats.expiringSoon}</div>
               <p className="text-xs text-muted-foreground">within 24 hrs</p>
             </CardContent>
           </Card>
@@ -311,5 +315,14 @@ export default function DashboardPage() {
         </Card>
       </main>
     </div>
+  )
+}
+
+// Wrap the dashboard with AuthGuard
+export default function DashboardPage() {
+  return (
+    <AuthGuard>
+      <DashboardContent />
+    </AuthGuard>
   )
 }
