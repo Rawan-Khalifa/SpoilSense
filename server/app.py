@@ -14,7 +14,9 @@ import firebase_admin
 from firebase_admin import credentials, auth as admin_auth, storage
 from werkzeug.utils import secure_filename
 
-from models import db  
+from models import db
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError  
 
 # ─── Initialize Firebase only once ─────────────────────────────────────────────
 if not firebase_admin._apps:
@@ -368,11 +370,10 @@ def save_to_inventory():
 @login_required
 def list_inventory():
     uid = request.uid
-    try:
-        print(f"📋 Fetching inventory for user: {uid}")
+    
+    def fetch_inventory_data():
+        """Fetch inventory data in a separate function"""
         items = []
-        
-        # Add timeout and error handling for Firestore
         collection_ref = db.collection("users").document(uid).collection("inventory")
         docs = collection_ref.stream()
         
@@ -400,9 +401,22 @@ def list_inventory():
             except Exception as doc_error:
                 print(f"⚠️ Error processing document {doc.id}: {doc_error}")
                 continue
-                
-        print(f"✅ Returning {len(items)} inventory items")
-        return jsonify(items), 200
+        return items
+    
+    try:
+        print(f"📋 Fetching inventory for user: {uid}")
+        
+        # Use ThreadPoolExecutor with timeout
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(fetch_inventory_data)
+            try:
+                # 20-second timeout
+                items = future.result(timeout=20)
+                print(f"✅ Returning {len(items)} inventory items")
+                return jsonify(items), 200
+            except FutureTimeoutError:
+                print(f"⏰ Timeout fetching inventory for user {uid}")
+                return jsonify({"error": "Request timeout - database is slow", "items": []}), 200
         
     except Exception as e:
         print(f"❌ Error fetching inventory: {e}")
@@ -481,16 +495,28 @@ def health_check():
 @app.route("/health", methods=["GET"])
 def health():
     """Simple health check"""
-    try:
-        # Test Firebase connection
+    def test_firebase():
         test_doc = db.collection("_health_check").document("test")
         test_doc.set({"timestamp": datetime.now(timezone.utc)})
-        
-        return jsonify({
-            "status": "healthy",
-            "firebase": "connected",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }), 200
+        return True
+    
+    try:
+        # Test Firebase connection with timeout
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(test_firebase)
+            try:
+                future.result(timeout=10)  # 10-second timeout
+                return jsonify({
+                    "status": "healthy",
+                    "firebase": "connected",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }), 200
+            except FutureTimeoutError:
+                return jsonify({
+                    "status": "degraded",
+                    "firebase": "timeout",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }), 200
     except Exception as e:
         return jsonify({
             "status": "unhealthy",
