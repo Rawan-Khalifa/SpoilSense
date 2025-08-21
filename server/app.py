@@ -368,25 +368,46 @@ def save_to_inventory():
 @login_required
 def list_inventory():
     uid = request.uid
-    items = []
-    for doc in db.collection("users").document(uid).collection("inventory").stream():
-        data = doc.to_dict()
-        scanned = data.get("scanTime")
-        expiration = data.get("predictedDate")
-        items.append({
-            "id": doc.id,
-            "imageUrl": data.get("imageUrl"),
-            "storageType": data.get("storageType"),
-            "scanTime": scanned.isoformat() if isinstance(scanned, datetime) else scanned,
-            "productName": data.get("productName"),
-            "spoilageDays": data.get("spoilageDays"),
-            "predictedDate": expiration.isoformat() if isinstance(expiration, datetime) else expiration,
-            "confidence": data.get("confidence"),
-            "estimatedPrice": data.get("estimatedPrice"),
-            "temperature": data.get("temperature"),
-            "humidity": data.get("humidity")
-        })
-    return jsonify(items), 200
+    try:
+        print(f"📋 Fetching inventory for user: {uid}")
+        items = []
+        
+        # Add timeout and error handling for Firestore
+        collection_ref = db.collection("users").document(uid).collection("inventory")
+        docs = collection_ref.stream()
+        
+        for doc in docs:
+            try:
+                data = doc.to_dict()
+                if not data:  # Skip empty documents
+                    continue
+                    
+                scanned = data.get("scanTime")
+                expiration = data.get("predictedDate")
+                items.append({
+                    "id": doc.id,
+                    "imageUrl": data.get("imageUrl"),
+                    "storageType": data.get("storageType"),
+                    "scanTime": scanned.isoformat() if isinstance(scanned, datetime) else scanned,
+                    "productName": data.get("productName"),
+                    "spoilageDays": data.get("spoilageDays"),
+                    "predictedDate": expiration.isoformat() if isinstance(expiration, datetime) else expiration,
+                    "confidence": data.get("confidence"),
+                    "estimatedPrice": data.get("estimatedPrice"),
+                    "temperature": data.get("temperature"),
+                    "humidity": data.get("humidity")
+                })
+            except Exception as doc_error:
+                print(f"⚠️ Error processing document {doc.id}: {doc_error}")
+                continue
+                
+        print(f"✅ Returning {len(items)} inventory items")
+        return jsonify(items), 200
+        
+    except Exception as e:
+        print(f"❌ Error fetching inventory: {e}")
+        traceback.print_exc()
+        return jsonify({"error": "Failed to fetch inventory", "details": str(e)}), 500
 
 # ─── Inventory: delete scan ───────────────────────────────────────────────────
 @app.route("/inventory/<item_id>", methods=["DELETE"])
@@ -447,6 +468,7 @@ def health_check():
     return jsonify({
         "status": "SpoilSense API is running",
         "version": "1.0",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "endpoints": [
             "/auth/login",
             "/auth/delete", 
@@ -455,6 +477,26 @@ def health_check():
             "/test/weather"
         ]
     }), 200
+
+@app.route("/health", methods=["GET"])
+def health():
+    """Simple health check"""
+    try:
+        # Test Firebase connection
+        test_doc = db.collection("_health_check").document("test")
+        test_doc.set({"timestamp": datetime.now(timezone.utc)})
+        
+        return jsonify({
+            "status": "healthy",
+            "firebase": "connected",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }), 500
 
 # ─── Run Flask server ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
