@@ -14,22 +14,46 @@ import firebase_admin
 from firebase_admin import credentials, auth as admin_auth, storage
 from werkzeug.utils import secure_filename
 
-from models import db
+from models import initialize_firestore, get_db
 import threading
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError  
 
 # ─── Initialize Firebase only once ─────────────────────────────────────────────
 if not firebase_admin._apps:
-    GOOGLE_CREDS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
     STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
     
-    if not GOOGLE_CREDS:
-        raise ValueError("Missing GOOGLE_APPLICATION_CREDENTIALS environment variable")
+    # Try to use credentials from environment variables first, then fallback to file
+    firebase_credentials_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
+    if firebase_credentials_json:
+        try:
+            # Parse JSON from environment variable
+            import json
+            cred_dict = json.loads(firebase_credentials_json)
+            cred = credentials.Certificate(cred_dict)
+            print("✅ Using Firebase credentials from environment variable")
+        except json.JSONDecodeError as e:
+            print(f"❌ Failed to parse Firebase credentials JSON: {e}")
+            raise ValueError("Invalid Firebase credentials JSON format")
+    else:
+        # Fallback to file path
+        GOOGLE_CREDS = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        if not GOOGLE_CREDS:
+            raise ValueError("Missing GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_CREDENTIALS_JSON environment variable")
+        cred = credentials.Certificate(GOOGLE_CREDS)
+        print("✅ Using Firebase credentials from file path")
     
-    cred = credentials.Certificate(GOOGLE_CREDS)
-    firebase_admin.initialize_app(cred, {
-        'storageBucket': STORAGE_BUCKET
-    })
+    try:
+        firebase_admin.initialize_app(cred, {
+            'storageBucket': STORAGE_BUCKET
+        })
+        print("✅ Firebase initialized successfully")
+        
+        # Initialize Firestore client
+        initialize_firestore()
+        print("✅ Firestore client initialized")
+    except Exception as e:
+        print(f"❌ Firebase initialization failed: {e}")
+        raise
 
 # Get Firebase services with explicit bucket name
 STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
@@ -188,7 +212,7 @@ def auth_login():
         update_data["latitude"] = lat
         update_data["longitude"] = lon
 
-    db.collection("users").document(uid).set(update_data, merge=True)
+    get_db().collection("users").document(uid).set(update_data, merge=True)
     return jsonify({"status": "ok"}), 200
 
 # ─── Auth: delete account ───────────────────────────────────────────────────
@@ -199,7 +223,7 @@ def auth_delete():
     
     # Delete all user's images from Firebase Storage
     try:
-        for doc in db.collection("users").document(uid).collection("inventory").stream():
+        for doc in get_db().collection("users").document(uid).collection("inventory").stream():
             data = doc.to_dict()
             image_url = data.get("imageUrl")
             if image_url:
@@ -208,7 +232,7 @@ def auth_delete():
         print(f"Error cleaning up user images: {e}")
     
     # Delete user data and Firebase Auth user
-    db.collection("users").document(uid).delete()
+    get_db().collection("users").document(uid).delete()
     admin_auth.delete_user(uid)
     return jsonify({"status": "account deleted"}), 200
 
@@ -355,7 +379,7 @@ def save_to_inventory():
                 "humidity": data.get("humidity")
             })
         
-        coll = db.collection("users").document(uid).collection("inventory")
+        coll = get_db().collection("users").document(uid).collection("inventory")
         doc = coll.document()
         doc.set(record)
         
@@ -374,7 +398,7 @@ def list_inventory():
     def fetch_inventory_data():
         """Fetch inventory data in a separate function"""
         items = []
-        collection_ref = db.collection("users").document(uid).collection("inventory")
+        collection_ref = get_db().collection("users").document(uid).collection("inventory")
         docs = collection_ref.stream()
         
         for doc in docs:
@@ -428,7 +452,7 @@ def list_inventory():
 @login_required
 def delete_inventory(item_id):
     uid = request.uid
-    doc_ref = db.collection("users").document(uid).collection("inventory").document(item_id)
+    doc_ref = get_db().collection("users").document(uid).collection("inventory").document(item_id)
     snapshot = doc_ref.get()
     if not snapshot.exists:
         return jsonify({"error": "Not found"}), 404
@@ -496,7 +520,7 @@ def health_check():
 def health():
     """Simple health check"""
     def test_firebase():
-        test_doc = db.collection("_health_check").document("test")
+        test_doc = get_db().collection("_health_check").document("test")
         test_doc.set({"timestamp": datetime.now(timezone.utc)})
         return True
     
