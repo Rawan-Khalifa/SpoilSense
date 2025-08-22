@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 # ─── Initialize Firebase only once ─────────────────────────────────────────────
 if not firebase_admin._apps:
-    STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
+    STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.appspot.com")
     
     # Try to use credentials from environment variables first, then fallback to file
     firebase_credentials_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
@@ -56,7 +56,7 @@ if not firebase_admin._apps:
         raise
 
 # Get Firebase services with explicit bucket name
-STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
+STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.appspot.com")
 bucket = storage.bucket(STORAGE_BUCKET)
 
 # ─── Rate limiting setup ─────────────────────────────────────────────────
@@ -157,8 +157,12 @@ def upload_to_firebase_storage(file, filename):
     try:
         print(f"🔄 Uploading {filename} to Firebase Storage...")
         
+        # Get fresh bucket reference to ensure proper auth
+        storage_bucket_name = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.appspot.com")
+        fresh_bucket = storage.bucket(storage_bucket_name)
+        
         # Create a blob in the bucket
-        blob = bucket.blob(f"food-images/{filename}")
+        blob = fresh_bucket.blob(f"food-images/{filename}")
         
         # Upload the file
         blob.upload_from_file(file, content_type=file.content_type)
