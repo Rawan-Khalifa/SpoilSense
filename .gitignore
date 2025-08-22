@@ -22,3 +22,7 @@ server/firebase-service-account.json
 
 .vercel
 client/.DS_Store
+
+# Google Cloud SDK
+google-cloud-sdk/
+Y/

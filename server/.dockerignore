@@ -1,0 +1,38 @@
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Ignore virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore git
+.git/
+.gitignore
+
+# Ignore logs
+*.log
+
+# Ignore test files
+tests/
+test_*
+
+# Ignore local env files (we'll set these in Cloud Run)
+.env
+.env.local
