@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 
 # ─── Initialize Firebase only once ─────────────────────────────────────────────
 if not firebase_admin._apps:
-    STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.appspot.com")
+    STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
     
     # Try to use credentials from environment variables first, then fallback to file
     firebase_credentials_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
@@ -56,7 +56,7 @@ if not firebase_admin._apps:
         raise
 
 # Get Firebase services with explicit bucket name
-STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.appspot.com")
+STORAGE_BUCKET = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
 bucket = storage.bucket(STORAGE_BUCKET)
 
 # ─── Rate limiting setup ─────────────────────────────────────────────────
@@ -158,7 +158,7 @@ def upload_to_firebase_storage(file, filename):
         print(f"🔄 Uploading {filename} to Firebase Storage...")
         
         # Get fresh bucket reference to ensure proper auth
-        storage_bucket_name = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.appspot.com")
+        storage_bucket_name = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
         fresh_bucket = storage.bucket(storage_bucket_name)
         
         # Create a blob in the bucket
@@ -192,7 +192,12 @@ def delete_from_firebase_storage(image_url):
         # URL format: https://storage.googleapis.com/spoilsense-9d6d0.firebasestorage.app/food-images/filename.ext
         if "food-images/" in image_url:
             filename = image_url.split("food-images/")[1].split("?")[0]  # Remove query params
-            blob = bucket.blob(f"food-images/{filename}")
+            
+            # Get fresh bucket reference to ensure proper auth
+            storage_bucket_name = os.getenv("FIREBASE_STORAGE_BUCKET", "spoilsense-9d6d0.firebasestorage.app")
+            fresh_bucket = storage.bucket(storage_bucket_name)
+            
+            blob = fresh_bucket.blob(f"food-images/{filename}")
             if blob.exists():
                 blob.delete()
                 print(f"Deleted {filename} from Firebase Storage")
