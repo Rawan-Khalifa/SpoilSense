@@ -526,7 +526,11 @@ def health():
 
 # ─── Run Flask server ─────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5000))
+    # Cloud Run sets PORT env var, default to 8080 for local development
+    port = int(os.getenv("PORT", 8080))
     print(f"Starting SpoilSense on port {port}")
-    app.run(host="0.0.0.0", port=port, debug=True)
+    
+    # For production (Cloud Run), don't use debug mode
+    debug_mode = os.getenv("FLASK_ENV") == "development"
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)
 
