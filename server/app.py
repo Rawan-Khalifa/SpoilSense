@@ -149,6 +149,55 @@ def login_required(f):
         return f(*args, **kwargs)
     return wrapper
 
+# ─── Helper function to upload to Google Cloud Storage (Alternative) ───────────
+def upload_to_gcs_storage(file, filename):
+    """
+    Upload file to Google Cloud Storage and return public URL (fallback method)
+    """
+    try:
+        print(f"🔄 Uploading {filename} to Google Cloud Storage...")
+        
+        from google.cloud import storage as gcs_storage
+        client = gcs_storage.Client()
+        bucket = client.bucket("spoilsense-food-images-bucket")
+        
+        # Create a blob and upload
+        blob = bucket.blob(f"food-images/{filename}")
+        file.seek(0)  # Reset file pointer
+        blob.upload_from_file(file, content_type=file.content_type)
+        
+        # Make it publicly accessible
+        blob.make_public()
+        
+        public_url = f"https://storage.googleapis.com/spoilsense-food-images-bucket/food-images/{filename}"
+        print(f"✅ GCS Upload successful: {public_url}")
+        return public_url
+        
+    except Exception as e:
+        print(f"❌ Google Cloud Storage upload error: {e}")
+        raise ValueError(f"Failed to upload image: {str(e)}")
+
+# ─── Robust upload function with fallback ─────────────────────────────────────
+def upload_image_with_fallback(file, filename):
+    """
+    Try Firebase Storage first, fall back to Google Cloud Storage if it fails
+    """
+    # First, try Firebase Storage
+    try:
+        return upload_to_firebase_storage(file, filename)
+    except Exception as firebase_error:
+        print(f"⚠️ Firebase Storage failed: {firebase_error}")
+        print(f"🔄 Falling back to Google Cloud Storage...")
+        
+        # Fall back to Google Cloud Storage
+        try:
+            return upload_to_gcs_storage(file, filename)
+        except Exception as gcs_error:
+            print(f"❌ Both storage methods failed!")
+            print(f"Firebase error: {firebase_error}")
+            print(f"GCS error: {gcs_error}")
+            raise ValueError(f"All storage methods failed. Firebase: {firebase_error}, GCS: {gcs_error}")
+
 # ─── Helper function to upload to Firebase Storage ────────────────────────────
 def upload_to_firebase_storage(file, filename):
     """
@@ -284,7 +333,7 @@ def predict_spoilage():
         
         # Upload to Firebase Storage
         img.seek(0)  # Reset file pointer
-        image_url = upload_to_firebase_storage(img, new_name)
+        image_url = upload_image_with_fallback(img, new_name)
         print(f"✅ Uploaded to Firebase: {image_url}")
         
         # Create temporary file for OpenAI processing
