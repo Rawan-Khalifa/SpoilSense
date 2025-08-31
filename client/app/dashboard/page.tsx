@@ -188,7 +188,7 @@ function DashboardContent() {
         </div>
 
         {/* Main Actions */}
-        <div className="grid md:grid-cols-2 gap-8 mb-8">
+        <div className="grid md:grid-cols-3 gap-8 mb-8">
           <Card className="hover:shadow-lg transition-shadow cursor-pointer">
             <Link href="/scan">
               <CardHeader>
@@ -267,18 +267,16 @@ function DashboardContent() {
               <CardContent>
                 <div className="space-y-2">
                   <div className="flex items-center text-sm text-gray-600">
-                    <span className="w-2 h-2 bg-orange-500 rounded-full mr-2" /> Upload photos of your groceries
+                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2" /> Upload photos of your groceries
                   </div>
                   <div className="flex items-center text-sm text-gray-600">
-                    <span className="w-2 h-2 bg-red-500 rounded-full mr-2" /> Get AI-powered recipe suggestions
+                    <span className="w-2 h-2 bg-blue-500 rounded-full mr-2" /> Get AI-powered recipe suggestions
                   </div>
                   <div className="flex items-center text-sm text-gray-600">
-                    <span className="w-2 h-2 bg-green-500 rounded-full mr-2" /> Go to recipe links
+                    <span className="w-2 h-2 bg-purple-500 rounded-full mr-2" /> Go to recipe links
                   </div>
                 </div>
-                <Button variant="outline" className="w-full mt-4 bg-transparent">
-                  Get Recipes
-                </Button>
+                <Button className="w-full mt-4">Get Recipes</Button>
               </CardContent>
             </Link>
           </Card>
