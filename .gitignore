@@ -14,6 +14,7 @@ server/__pycache__/
 *.env
 server/.env
 server/firebase-service-account.json
+server/firebase-service-account-v2.json
 
 # environment variables
 .env.local
