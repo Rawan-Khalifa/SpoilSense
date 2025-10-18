@@ -266,17 +266,22 @@ Do not include any other text or explanation outside the JSON."""
             raise ValueError(f"Network error: {e}")
     except FileNotFoundError:
         raise ValueError("Image file not found")
-    except openai.RateLimitError:
+    except openai.RateLimitError as e:
+        print(f"❌ OpenAI RateLimitError details: {e}")
         raise ValueError("Service temporarily busy. Please try again in a moment.")
-    except openai.AuthenticationError:
+    except openai.AuthenticationError as e:
+        print(f"❌ OpenAI AuthenticationError details: {e}")
         raise ValueError("API authentication failed. Please check configuration.")
     except openai.BadRequestError as e:
+        print(f"❌ OpenAI BadRequestError details: {e}")
         if "image" in str(e).lower():
             raise ValueError("Unable to process image. Please try with a clearer photo of food.")
         else:
             raise ValueError(f"Invalid request: {str(e)}")
     except Exception as e:
-        print(f"❌ Unexpected error in estimate_spoilage: {e}")
+        print(f"❌ Unexpected error in estimate_spoilage: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
         if "Invalid image" in str(e) or "image" in str(e).lower():
             raise ValueError("Unable to process image. Please try with a clearer photo of food.")
         elif "rate limit" in str(e).lower():
