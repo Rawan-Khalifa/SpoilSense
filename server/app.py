@@ -7,6 +7,10 @@ import traceback
 import tempfile
 from collections import defaultdict
 import time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
