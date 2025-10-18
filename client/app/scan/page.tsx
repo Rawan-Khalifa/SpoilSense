@@ -135,8 +135,12 @@ function ScanPageContent() {
       }
 
       // note: this endpoint ONLY predicts, does not save
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/predict`;
+      console.log("🔍 API URL being called:", apiUrl);
+      console.log("🔍 Environment variable:", process.env.NEXT_PUBLIC_API_BASE_URL);
+      
       const resp = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/predict`,
+        apiUrl,
         form,
         {
           headers: {
@@ -167,7 +171,10 @@ function ScanPageContent() {
         setSelectedFile(null)
         fileInputRef.current!.value = ""
       } else {
-        console.error(error)
+        console.error("❌ Prediction error:", error)
+        console.error("❌ Error response:", error.response)
+        console.error("❌ Error message:", error.message)
+        console.error("❌ Request config:", error.config)
         toast({
           title: "Prediction failed",
           description: error.response?.data?.error || error.message || "Please try a different image.",
